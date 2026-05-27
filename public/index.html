@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Hotel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="hotel-name-section">
+                <h1 id="hotelNombre">Mi Hotel</h1>
+                <div class="header-actions">
+                    <button type="button" class="btn-logout" onclick="cerrarSesion()" title="Cerrar Sesión">🚪 Cerrar Sesión</button>
+                </div>
+            </div>
+        </header>
+
+        <div id="bannerSalidasHoy" class="banner-salidas-hoy" hidden role="status" aria-live="polite"></div>
+
+        <!-- Tabs Navigation -->
+        <nav class="tabs">
+            <button type="button" class="tab-btn active" onclick="mostrarSeccion('habitaciones', this)">🏨 Habitaciones</button>
+            <button type="button" class="tab-btn" onclick="mostrarSeccion('huespedes', this)">👤 Huéspedes</button>
+            <button type="button" class="tab-btn" id="tabBtnReservas" onclick="mostrarSeccion('reservas', this)">📅 Reservas</button>
+            <button type="button" class="tab-btn" id="tabBtnChinchorros" onclick="mostrarSeccion('chinchorros', this)">🛋️ Chinchorros</button>
+            <button type="button" class="tab-btn" onclick="mostrarSeccion('indicadores', this)">📊 Indicadores</button>
+            <button type="button" class="tab-btn" onclick="mostrarSeccion('calendario', this)">📆 Calendario</button>
+            <button type="button" class="tab-btn" onclick="mostrarSeccion('configuracion', this)">⚙️ Configuración</button>
+        </nav>
+
+        <!-- Sección Habitaciones -->
+        <section id="seccion-habitaciones" class="seccion active">
+            <div class="section-header">
+                <h2>Gestión de Habitaciones</h2>
+                <button class="btn-primary" onclick="mostrarModalHabitacion()">+ Nueva Habitación</button>
+            </div>
+            <div class="modulo-busqueda-wrap">
+                <input
+                    type="search"
+                    id="buscarHabitaciones"
+                    class="input-busqueda-modulo"
+                    placeholder="Buscar habitación por número, tipo o estado..."
+                    oninput="actualizarFiltroModulo('habitaciones', this.value)">
+            </div>
+
+            <div id="resumenOcupacion" class="ocupacion-panel" aria-live="polite"></div>
+
+            <div class="inventario-vista-wrap" id="wrapVistaHabitaciones">
+                <div class="grid-habitaciones" id="gridHabitaciones"></div>
+                <div id="wrapTablaHabitaciones" class="table-container tabla-inventario-wrap tabla-inventario-oculta" aria-hidden="true">
+                    <table class="data-table tabla-inventario-recursos">
+                        <thead>
+                            <tr>
+                                <th>Habitación</th>
+                                <th>Tipo</th>
+                                <th>Tarifa / noche</th>
+                                <th>Camas</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaHabitacionesInv"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Huéspedes -->
+        <section id="seccion-huespedes" class="seccion">
+            <div class="section-header">
+                <h2>Gestión de Huéspedes</h2>
+                <button class="btn-primary" onclick="mostrarModalHuesped()">+ Nuevo Huésped</button>
+            </div>
+            <div class="modulo-busqueda-wrap">
+                <input
+                    type="search"
+                    id="buscarHuespedes"
+                    class="input-busqueda-modulo"
+                    placeholder="Buscar huésped por nombre, apellido o identificación..."
+                    oninput="actualizarFiltroModulo('huespedes', this.value)">
+            </div>
+            
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Apellido</th>
+                            <th>Email</th>
+                            <th>Teléfono</th>
+                            <th>Documento</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaHuespedes">
+                        <!-- Los huéspedes se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección Reservas -->
+        <section id="seccion-reservas" class="seccion">
+            <div class="section-header section-header-wrap">
+                <h2>Gestión de Reservas</h2>
+                <div class="section-header-btns">
+                    <button type="button" class="btn-primary" onclick="mostrarModalReserva()">+ Nueva reserva habitación</button>
+                    <button type="button" class="btn-secondary" onclick="mostrarModalReservaChinchorro()">+ Reserva chinchorro</button>
+                </div>
+            </div>
+            <div class="modulo-busqueda-wrap">
+                <input
+                    type="search"
+                    id="buscarReservas"
+                    class="input-busqueda-modulo"
+                    placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
+                    oninput="actualizarFiltroModulo('reservas', this.value)">
+            </div>
+            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros.</p>
+
+            <h3 class="subsection-title">Reservas de habitaciones</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Habitación</th>
+                            <th>Huésped</th>
+                            <th>Fecha Ingreso</th>
+                            <th>Fecha Salida</th>
+                            <th>Estado</th>
+                            <th>Valor ref.</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaReservas">
+                        <!-- Las reservas se cargarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 class="subsection-title">Reservas de chinchorros</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Chinchorro</th>
+                            <th>Huésped</th>
+                            <th>Fecha inicio</th>
+                            <th>Fecha fin</th>
+                            <th>Estado</th>
+                            <th>Valor ref.</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaReservasChinchorros"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Alquiler de chinchorros: inventario -->
+        <section id="seccion-chinchorros" class="seccion">
+            <div class="section-header section-header-wrap">
+                <h2>Alquiler de chinchorros</h2>
+                <div class="section-header-btns">
+                    <button type="button" class="btn-primary" onclick="mostrarModalChinchorro()">+ Nuevo chinchorro</button>
+                </div>
+            </div>
+            <div class="modulo-busqueda-wrap">
+                <input
+                    type="search"
+                    id="buscarChinchorros"
+                    class="input-busqueda-modulo"
+                    placeholder="Buscar chinchorro por código, zona o estado..."
+                    oninput="actualizarFiltroModulo('chinchorros', this.value)">
+            </div>
+            <p class="section-intro">Inventario y estado de los chinchorros disponibles para alquiler.</p>
+
+            <h3 class="subsection-title">Inventario de chinchorros</h3>
+            <div class="inventario-vista-wrap" id="wrapVistaChinchorros">
+                <div class="grid-habitaciones" id="gridChinchorros"></div>
+                <div id="wrapTablaChinchorros" class="table-container tabla-inventario-wrap tabla-inventario-oculta" aria-hidden="true">
+                    <table class="data-table tabla-inventario-recursos">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Zona</th>
+                                <th>Tarifa / día</th>
+                                <th>Reservas activas (hoy)</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaChinchorrosInv"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Indicadores -->
+        <section id="seccion-indicadores" class="seccion">
+            <div class="section-header section-header-wrap">
+                <h2>Indicadores de ocupación</h2>
+                <button type="button" class="btn-secondary" onclick="actualizarIndicadoresOcupacion()">🔄 Actualizar indicadores</button>
+            </div>
+            <p class="section-intro">Módulo para monitorear el porcentaje de ocupación actual de habitaciones, chinchorros y reservas activas del sistema.</p>
+
+            <h3 class="subsection-title">Resumen rápido (barras)</h3>
+            <div class="dual-ocupacion" aria-label="Ocupación habitaciones y chinchorros">
+                <div id="dualPanelHabitaciones" class="dual-ocupacion-slot"></div>
+                <div id="dualPanelChinchorros" class="dual-ocupacion-slot"></div>
+            </div>
+
+            <h3 class="subsection-title">Indicadores porcentuales</h3>
+            <div id="indicadoresOcupacionGrid" class="indicadores-grid" aria-live="polite"></div>
+        </section>
+
+        <!-- Calendario de disponibilidad -->
+        <section id="seccion-calendario" class="seccion">
+            <div class="section-header section-header-wrap">
+                <h2>Calendario de disponibilidad</h2>
+                <button type="button" class="btn-secondary" onclick="actualizarCalendarioDisponibilidad()">🔄 Actualizar</button>
+            </div>
+            <p class="section-intro">Vista mensual según <strong>reservas activas</strong>: cada día en rango ingreso–salida (fechas inclusive, como en la base de datos) aparece en rojo. Verde = sin reserva activa ese día.</p>
+            <div class="cal-leyenda" aria-hidden="true">
+                <span class="cal-ley-item"><span class="cal-swatch cal-libre"></span> Disponible</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado</span>
+            </div>
+            <div class="cal-nav">
+                <button type="button" class="btn-secondary" onclick="calendarioMesAnterior()">← Mes anterior</button>
+                <strong id="calendarioTituloMes" class="cal-titulo-mes"></strong>
+                <button type="button" class="btn-secondary" onclick="calendarioMesSiguiente()">Mes siguiente →</button>
+            </div>
+            <h3 class="subsection-title">Habitaciones</h3>
+            <div class="cal-scroll-wrap" id="calendarioHabitacionesWrap"></div>
+            <h3 class="subsection-title">Chinchorros</h3>
+            <div class="cal-scroll-wrap" id="calendarioChinchorrosWrap"></div>
+        </section>
+
+        <section id="seccion-configuracion" class="seccion">
+            <div class="section-header">
+                <h2>Configuración y seguridad</h2>
+            </div>
+            <p class="section-intro config-modulo-desc">
+                Módulo de configuración y administración de usuarios, diseñado para la <strong>creación, gestión y asignación de credenciales de acceso</strong>,
+                permitiendo el ingreso seguro de usuarios autorizados a la aplicación mediante <strong>autenticación</strong> (sesión y contraseña con hash)
+                y <strong>control de permisos</strong> según el rol asignado.
+            </p>
+
+            <div id="configRolActual" class="admin-banner admin-banner-rol" role="status"></div>
+
+            <h3 class="subsection-title">Establecimiento y tu cuenta</h3>
+            <p class="section-intro" style="margin-top:-6px">
+                Cambie aquí el <strong>nombre del establecimiento</strong> que se muestra en la cabecera de la aplicación y la <strong>contraseña</strong> de tu usuario (todos los roles).
+            </p>
+            <div class="config-cuenta-bar">
+                <button type="button" class="btn-secondary" onclick="editarNombreHotel()">✏️ Editar nombre del hotel</button>
+                <button type="button" class="btn-secondary" onclick="mostrarModalMiPassword()">🔑 Cambiar mi contraseña</button>
+            </div>
+
+            <h3 class="subsection-title">Permisos resumidos por rol</h3>
+            <p class="section-intro" style="margin-top:-6px">Compare qué puede hacer cada rol. Su rol efectivo se indica arriba.</p>
+
+            <div class="permisos-grid">
+                <div class="permisos-card permisos-card-admin">
+                    <h4 class="permisos-card-titulo">Administrador</h4>
+                    <ul class="permisos-lista">
+                        <li>Acceso a todas las áreas: habitaciones, huéspedes, reservas, chinchorros, calendario y nombre del hotel.</li>
+                        <li>Gestión de usuarios: alta, edición, anulación o reactivación de cuentas, y restablecimiento de contraseñas.</li>
+                        <li>Uso de esta sección de configuración con la tabla de usuarios, la <strong>paleta de colores</strong> y las <strong>vistas del inventario</strong> (habitaciones y chinchorros).</li>
+                        <li>Cambio del nombre del establecimiento y de su propia contraseña desde este módulo (sección superior).</li>
+                    </ul>
+                </div>
+                <div class="permisos-card permisos-card-oper">
+                    <h4 class="permisos-card-titulo">Operador</h4>
+                    <ul class="permisos-lista">
+                        <li>Gestión operativa del hotel: habitaciones, camas, huéspedes, reservas, chinchorros y calendario de disponibilidad.</li>
+                        <li><strong>Puede iniciar sesión</strong> con su usuario y contraseña asignados por un administrador.</li>
+                        <li>Consulta de esta pantalla de <strong>Configuración</strong> y resumen de permisos (sin tabla de usuarios).</li>
+                        <li><strong>No puede</strong> personalizar colores ni el modo de vista del inventario; solo el administrador puede hacerlo.</li>
+                        <li><strong>No puede</strong> crear ni modificar otros usuarios ni roles; las rutas de administración responden con permiso denegado.</li>
+                        <li>Cambio del nombre del establecimiento y de su propia contraseña desde esta sección (bloque superior).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 class="subsection-title">Vistas de inventario (habitaciones y chinchorros)</h3>
+            <p id="vistasInventarioLectura" class="section-intro" style="margin-top:-6px"></p>
+
+            <div id="bloqueVistasInventarioAdmin" class="solo-admin oculto-sin-permiso">
+                <p class="section-intro" style="margin-top:-6px">
+                    Elija cómo mostrar cada inventario en sus pestañas: <strong>tarjetas</strong> en cuadrícula, <strong>lista compacta</strong> en una columna o <strong>tabla</strong> con filas y columnas.
+                    Los cambios se aplican al guardar para todos los usuarios.
+                </p>
+                <div class="vistas-inv-grid">
+                    <div class="form-group">
+                        <label for="selVistaHabitaciones">Vista habitaciones</label>
+                        <select id="selVistaHabitaciones">
+                            <option value="tarjetas">Tarjetas (cuadrícula)</option>
+                            <option value="lista">Lista compacta</option>
+                            <option value="tabla">Tabla</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="selVistaChinchorros">Vista chinchorros</label>
+                        <select id="selVistaChinchorros">
+                            <option value="tarjetas">Tarjetas (cuadrícula)</option>
+                            <option value="lista">Lista compacta</option>
+                            <option value="tabla">Tabla</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="tema-acciones" style="margin-top:12px">
+                    <button type="button" class="btn-primary" onclick="guardarVistasInventario()">Guardar vistas</button>
+                </div>
+            </div>
+
+            <div id="bloqueTemaApariencia" class="solo-admin oculto-sin-permiso">
+                <h3 class="subsection-title">Apariencia (colores)</h3>
+                <p class="section-intro" style="margin-top:-6px">
+                    Solo el <strong>administrador</strong> puede cambiar los colores y el fondo. Se guardan en el sistema y se aplican en toda la aplicación y en la pantalla de inicio de sesión. Use formato hexadecimal con el selector de color.
+                </p>
+                <div class="tema-colores-grid">
+                    <div class="form-group tema-color-item">
+                        <label for="temaColorPrimario">Principal (cabecera, botones)</label>
+                        <input type="color" id="temaColorPrimario" title="Color principal">
+                    </div>
+                    <div class="form-group tema-color-item">
+                        <label for="temaColorSecundario">Intermedio (degradados)</label>
+                        <input type="color" id="temaColorSecundario" title="Color secundario">
+                    </div>
+                    <div class="form-group tema-color-item">
+                        <label for="temaColorAcento">Acento (detalles claros)</label>
+                        <input type="color" id="temaColorAcento" title="Color de acento">
+                    </div>
+                    <div class="form-group tema-color-item">
+                        <label for="temaColorTitulo">Títulos y textos de sección</label>
+                        <input type="color" id="temaColorTitulo" title="Color de títulos">
+                    </div>
+                </div>
+                <div class="form-group tema-fondo-item">
+                    <label for="temaFondoImagenUrl">Imagen de fondo (URL)</label>
+                    <input
+                        type="url"
+                        id="temaFondoImagenUrl"
+                        placeholder="https://ejemplo.com/fondo.jpg o /images/fondo.jpg">
+                    <small class="form-hint">
+                        Acepte URL `http/https` o ruta local iniciando por `/`.
+                    </small>
+                </div>
+                <div class="tema-acciones tema-fondo-upload">
+                    <input type="file" id="temaFondoArchivo" accept="image/*" hidden>
+                    <button type="button" class="btn-secondary" onclick="abrirSelectorFondoArchivo()">Buscar imagen en el equipo</button>
+                    <span id="temaFondoArchivoNombre" class="muted">Ningún archivo seleccionado</span>
+                    <button type="button" class="btn-primary" onclick="subirFondoArchivoSeleccionado()">Subir y aplicar imagen</button>
+                </div>
+                <div class="tema-acciones">
+                    <button type="button" class="btn-primary" onclick="guardarTemaApariencia()">Guardar apariencia</button>
+                    <button type="button" class="btn-secondary" onclick="restaurarTemaApariencia()">Restaurar predeterminados</button>
+                </div>
+            </div>
+
+            <div id="bloqueGestionUsuarios" class="solo-admin oculto-sin-permiso">
+                <h3 class="subsection-title">Administración de usuarios</h3>
+                <p class="section-intro" style="margin-top:-6px">
+                    Credenciales con contraseña cifrada (bcrypt). Puede <strong>anular</strong> cuentas creadas aquí para impedir el inicio de sesión (y reactivarlas después). Debe quedar al menos un administrador activo.
+                </p>
+                <div class="section-header section-header-wrap" style="margin-bottom:14px">
+                    <span></span>
+                    <button type="button" class="btn-primary" onclick="mostrarModalNuevoUsuario()">+ Nuevo usuario</button>
+                </div>
+                <div id="adminUsuarioActual" class="admin-banner"></div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Usuario</th>
+                                <th>Nombre</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Estado</th>
+                                <th>Último acceso</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaUsuariosAdmin"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal para Editar Nombre del Hotel -->
+    <div id="modalNombreHotel" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalNombreHotel')">&times;</span>
+            <h2>Editar Nombre del Hotel</h2>
+            <input type="text" id="inputNombreHotel" placeholder="Nombre del hotel" value="">
+            <div class="modal-actions">
+                <button class="btn-primary" onclick="guardarNombreHotel()">Guardar</button>
+                <button class="btn-secondary" onclick="cerrarModal('modalNombreHotel')">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Crear/Editar Habitación -->
+    <div id="modalHabitacion" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalHabitacion')">&times;</span>
+            <h2 id="tituloModalHabitacion">Nueva habitación</h2>
+            <form id="formHabitacion" onsubmit="guardarHabitacion(event)">
+                <input type="hidden" id="idHabitacionEdicion" value="">
+                <div class="form-group">
+                    <label>Número de Habitación *</label>
+                    <input type="text" id="numeroHabitacion" required>
+                </div>
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <input type="text" id="tipoHabitacion" placeholder="Ej: Estándar, Suite, Deluxe">
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por noche</label>
+                    <input type="number" id="precioHabitacion" min="0" step="0.01" value="0" placeholder="0.00">
+                    <small class="form-hint">Valor de referencia por cada noche de estadía.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary" id="btnSubmitHabitacion">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalHabitacion')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Gestionar Camas -->
+    <div id="modalCamas" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="cerrarModal('modalCamas')">&times;</span>
+            <h2>Gestionar Camas - Habitación <span id="numeroHabitacionCamas"></span></h2>
+            <div class="camas-section">
+                <div class="form-group">
+                    <label>Tipo de Cama</label>
+                    <select id="tipoCama">
+                        <option value="Individual">Individual</option>
+                        <option value="Doble">Doble</option>
+                        <option value="Queen">Queen</option>
+                        <option value="King">King</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Número (opcional)</label>
+                    <input type="number" id="numeroCama" min="1">
+                </div>
+                <button class="btn-primary" onclick="agregarCama()">+ Agregar Cama</button>
+            </div>
+            <div class="camas-list" id="listaCamas">
+                <!-- Las camas se cargarán aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Crear/Editar Huésped -->
+    <div id="modalHuesped" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalHuesped')">&times;</span>
+            <h2 id="tituloModalHuesped">Nuevo Huésped</h2>
+            <form id="formHuesped" novalidate onsubmit="guardarHuesped(event)">
+                <input type="hidden" id="idHuespedEdicion" name="idHuespedEdicion" value="">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" id="nombreHuesped" required>
+                </div>
+                <div class="form-group">
+                    <label>Apellido</label>
+                    <input type="text" id="apellidoHuesped">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="emailHuesped">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono</label>
+                    <input type="tel" id="telefonoHuesped">
+                </div>
+                <div class="form-group">
+                    <label>Documento</label>
+                    <input type="text" id="documentoHuesped">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary" id="btnSubmitHuesped">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalHuesped')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Crear Reserva -->
+    <div id="modalReserva" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalReserva')">&times;</span>
+            <h2 id="tituloModalReserva">Nueva Reserva</h2>
+            <form id="formReserva" onsubmit="guardarReserva(event)">
+                <input type="hidden" id="idReservaEdicion" value="">
+                <div class="form-group">
+                    <label>Habitación *</label>
+                    <select id="habitacionReserva" required>
+                        <option value="">Seleccionar habitación</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Huésped *</label>
+                    <select id="huespedReserva" required>
+                        <option value="">Seleccionar huésped</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Ingreso *</label>
+                    <input type="date" id="fechaIngreso" required>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Salida *</label>
+                    <input type="date" id="fechaSalida" required>
+                </div>
+                <p id="mensajeAyudaModalReserva" class="modal-hint" hidden>
+                    Cambie los datos que necesite y pulse <strong>Guardar cambios</strong> para aplicarlos.
+                </p>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary" id="btnSubmitReserva">Reservar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalReserva')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Chinchorro -->
+    <div id="modalChinchorro" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalChinchorro')">&times;</span>
+            <h2 id="tituloModalChinchorro">Nuevo chinchorro</h2>
+            <form id="formChinchorro" onsubmit="guardarChinchorro(event)">
+                <input type="hidden" id="idChinchorroEdicion" value="">
+                <div class="form-group">
+                    <label>Código / número *</label>
+                    <input type="text" id="codigoChinchorro" required placeholder="Ej: CH-01">
+                </div>
+                <div class="form-group">
+                    <label>Zona o ubicación</label>
+                    <input type="text" id="zonaChinchorro" placeholder="Ej: Playa, piscina">
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por día</label>
+                    <input type="number" id="precioChinchorro" min="0" step="0.01" value="0" placeholder="0.00">
+                    <small class="form-hint">Valor de referencia por cada día de alquiler.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary" id="btnSubmitChinchorro">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalChinchorro')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Reserva Chinchorro -->
+    <div id="modalReservaChinchorro" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalReservaChinchorro')">&times;</span>
+            <h2 id="tituloModalReservaChin">Reservar chinchorro</h2>
+            <form id="formReservaChinchorro" onsubmit="guardarReservaChinchorro(event)">
+                <input type="hidden" id="idReservaChinchorroEdicion" value="">
+                <div class="form-group">
+                    <label>Chinchorro *</label>
+                    <select id="chinchorroReserva" required>
+                        <option value="">Seleccionar</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Huésped *</label>
+                    <select id="huespedReservaChin" required>
+                        <option value="">Seleccionar huésped</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de inicio *</label>
+                    <input type="date" id="fechaIngresoChin" required>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de fin *</label>
+                    <input type="date" id="fechaSalidaChin" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Reservar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalReservaChinchorro')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: nuevo usuario (admin) -->
+    <div id="modalNuevoUsuario" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalNuevoUsuario')">&times;</span>
+            <h2>Nuevo usuario</h2>
+            <form id="formNuevoUsuario" onsubmit="guardarNuevoUsuario(event)">
+                <div class="form-group">
+                    <label>Usuario *</label>
+                    <input type="text" id="nuevoUsername" required autocomplete="off" placeholder="login único">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña * (mín. 6 caracteres)</label>
+                    <input type="password" id="nuevoPassword" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Nombre</label>
+                    <input type="text" id="nuevoNombre" placeholder="Nombre visible">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="nuevoEmail" placeholder="correo@ejemplo.com">
+                </div>
+                <div class="form-group">
+                    <label>Rol *</label>
+                    <select id="nuevoRol" required>
+                        <option value="operador">Operador (acceso operativo del hotel)</option>
+                        <option value="administrador">Administrador (acceso total)</option>
+                    </select>
+                    <small class="form-hint">El rol <strong>Operador</strong> puede iniciar sesión y usar habitaciones, reservas, huéspedes, chinchorros e indicadores. No administra usuarios ni colores.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Crear</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalNuevoUsuario')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: editar usuario (admin) -->
+    <div id="modalEditarUsuario" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalEditarUsuario')">&times;</span>
+            <h2>Editar usuario</h2>
+            <form id="formEditarUsuario" onsubmit="guardarEdicionUsuario(event)">
+                <input type="hidden" id="editUsuarioId">
+                <div class="form-group">
+                    <label>Usuario</label>
+                    <input type="text" id="editUsernameReadonly" readonly class="input-readonly">
+                </div>
+                <div class="form-group">
+                    <label>Nombre</label>
+                    <input type="text" id="editNombreUsuario">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="editEmailUsuario">
+                </div>
+                <div class="form-group">
+                    <label>Rol</label>
+                    <select id="editRolUsuario">
+                        <option value="operador">Operador</option>
+                        <option value="administrador">Administrador</option>
+                    </select>
+                </div>
+                <div id="editUsuarioEstadoPanel" class="form-group usuario-estado-panel">
+                    <label>Estado de la cuenta</label>
+                    <p id="editUsuarioEstadoTexto" class="usuario-estado-texto"></p>
+                    <div class="usuario-estado-acciones">
+                        <button type="button" id="btnAnularUsuarioEdit" class="btn-danger btn-small" hidden onclick="anularUsuarioDesdeEdicion()">Anular cuenta</button>
+                        <button type="button" id="btnReactivarUsuarioEdit" class="btn-primary btn-small" hidden onclick="reactivarUsuarioDesdeEdicion()">Reactivar cuenta</button>
+                    </div>
+                    <small class="form-hint">Una cuenta anulada no puede iniciar sesión hasta que la reactive un administrador.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalEditarUsuario')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: restablecer contraseña (admin) -->
+    <div id="modalResetPassword" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalResetPassword')">&times;</span>
+            <h2>Restablecer contraseña</h2>
+            <p class="section-intro" style="margin-top:0">Usuario: <strong id="resetPassUsernameLabel"></strong></p>
+            <form id="formResetPassword" onsubmit="guardarResetPasswordAdmin(event)">
+                <input type="hidden" id="resetPassUserId">
+                <div class="form-group">
+                    <label>Nueva contraseña *</label>
+                    <input type="password" id="resetPass1" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Repetir contraseña *</label>
+                    <input type="password" id="resetPass2" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalResetPassword')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: cambiar mi contraseña -->
+    <div id="modalMiPassword" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalMiPassword')">&times;</span>
+            <h2>Cambiar mi contraseña</h2>
+            <form id="formMiPassword" onsubmit="guardarMiPassword(event)">
+                <div class="form-group">
+                    <label>Contraseña actual *</label>
+                    <input type="password" id="miPassActual" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>Nueva contraseña * (mín. 6)</label>
+                    <input type="password" id="miPassNueva" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Confirmar nueva *</label>
+                    <input type="password" id="miPassNueva2" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Actualizar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalMiPassword')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="theme-apply.js?v=4"></script>
+    <script src="app.js?v=4"></script>
+</body>
+</html>

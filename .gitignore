@@ -1,0 +1,6 @@
+node_modules/
+hotel.db
+hotel.db-journal
+.DS_Store
+*.log
+.env
