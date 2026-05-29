@@ -125,22 +125,37 @@ body::before {
 /* Tabs */
 .tabs {
     display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
     background: #FFF5F0;
     border-bottom: 2px solid #FFE5D9;
 }
 
+.tabs::-webkit-scrollbar {
+    height: 6px;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+    background: #ffd4b3;
+    border-radius: 3px;
+}
+
 .tab-btn {
-    flex: 1;
-    padding: 20px;
+    flex: 1 0 auto;
+    min-width: max-content;
+    padding: 16px 18px;
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 1.1em;
+    font-size: 1.05em;
     font-weight: 600;
     color: var(--color-heading);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border-bottom: 3px solid transparent;
     position: relative;
+    white-space: nowrap;
 }
 
 .tab-btn::before {
@@ -402,6 +417,131 @@ body::before {
     font-size: 0.85rem;
     color: #5d4037;
     flex-wrap: wrap;
+}
+
+/* Estado financiero (indicadores) */
+.fin-estado-panel {
+    background: linear-gradient(180deg, #f0f7ff 0%, #f8fbff 100%);
+    border: 1px solid #d6e8f7;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 28px;
+}
+
+.fin-estado-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.fin-card {
+    border-radius: 14px;
+    padding: 16px 18px;
+    min-height: 96px;
+}
+
+.fin-card-label {
+    margin: 0 0 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+}
+
+.fin-card-monto {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.fin-card-detalle {
+    margin: 10px 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: #5a6578;
+}
+
+.fin-ingresos {
+    background: #e8f8ef;
+}
+
+.fin-ingresos .fin-card-monto {
+    color: #16a34a;
+}
+
+.fin-pagado {
+    background: #e8f2fc;
+}
+
+.fin-pagado .fin-card-monto {
+    color: #2563eb;
+}
+
+.fin-adeudado {
+    background: #fdecec;
+}
+
+.fin-adeudado .fin-card-monto {
+    color: #dc2626;
+}
+
+.fin-estado-nota {
+    margin: 14px 0 0;
+    font-size: 0.82rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.modal-content-compact {
+    max-width: 520px;
+}
+
+.reserva-tipo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.reserva-tipo-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    text-align: left;
+    padding: 18px 16px;
+    border: 2px solid #FFE5D9;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #FFFBF8 0%, #FFF5EE 100%);
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    font-family: inherit;
+    color: inherit;
+}
+
+.reserva-tipo-card:hover,
+.reserva-tipo-card:focus-visible {
+    border-color: var(--color-primary);
+    box-shadow: 0 4px 16px rgba(var(--color-primary-rgb), 0.2);
+    transform: translateY(-2px);
+    outline: none;
+}
+
+.reserva-tipo-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.reserva-tipo-titulo {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-heading);
+}
+
+.reserva-tipo-desc {
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.4;
 }
 
 /* Calendario de disponibilidad */
@@ -1238,18 +1378,135 @@ body::before {
     color: #666;
 }
 
-/* Responsive */
+/* ========== Diseño adaptable: tablet, móvil y escritorio ========== */
+
+/* Tablet (hasta 1024px) */
+@media (max-width: 1024px) {
+    body {
+        padding: 14px;
+    }
+
+    .container {
+        border-radius: 16px;
+    }
+
+    .header {
+        padding: 22px 20px;
+    }
+
+    .header h1 {
+        font-size: 2em;
+    }
+
+    .seccion {
+        padding: 22px 18px;
+    }
+
+    .section-header h2 {
+        font-size: 1.5em;
+    }
+
+    .permisos-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tema-colores-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .modulo-busqueda-wrap {
+        max-width: 100%;
+    }
+
+    .indicadores-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fin-estado-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fin-estado-grid .fin-ingresos {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Móvil (hasta 768px) */
 @media (max-width: 768px) {
     body {
+        padding: 8px;
         background-attachment: scroll;
     }
-    
-    .header h1 {
-        font-size: 1.8em;
+
+    .container {
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
     }
-    
+
+    .header {
+        padding: 18px 14px;
+    }
+
+    .hotel-name-section {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .header h1 {
+        font-size: 1.55em;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .btn-logout,
+    .btn-edit {
+        width: 100%;
+        max-width: 280px;
+        text-align: center;
+        min-height: 44px;
+    }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        padding: 14px 14px;
+        font-size: 0.92em;
+        min-height: 48px;
+    }
+
+    .seccion {
+        padding: 16px 12px;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .section-header h2 {
+        font-size: 1.35em;
+    }
+
+    .section-header-btns {
+        width: 100%;
+    }
+
+    .section-header-btns .btn-primary,
+    .section-header-btns .btn-secondary {
+        flex: 1 1 100%;
+        width: 100%;
+        min-height: 44px;
+    }
+
     .grid-habitaciones {
         grid-template-columns: 1fr;
+        gap: 14px;
     }
 
     .grid-habitaciones.vista-recursos-lista .habitacion-card {
@@ -1261,6 +1518,19 @@ body::before {
         justify-content: flex-start;
     }
 
+    .habitacion-acciones {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .habitacion-acciones .btn-small,
+    .habitacion-acciones .btn-primary,
+    .habitacion-acciones .btn-secondary,
+    .habitacion-acciones .btn-danger {
+        width: 100%;
+        min-height: 44px;
+    }
+
     .ocupacion-chips {
         justify-content: center;
     }
@@ -1269,26 +1539,221 @@ body::before {
         grid-template-columns: 1fr;
     }
 
+    .indicadores-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .fin-estado-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .fin-estado-grid .fin-ingresos {
+        grid-column: auto;
+    }
+
+    .fin-estado-panel {
+        padding: 12px;
+    }
+
+    .reserva-tipo-grid {
+        grid-template-columns: 1fr;
+    }
+
     .permisos-grid {
         grid-template-columns: 1fr;
     }
-    
-    .section-header {
-        flex-direction: column;
-        align-items: flex-start;
+
+    .tema-colores-grid,
+    .vistas-inv-grid {
+        grid-template-columns: 1fr;
     }
-    
-    .tabs {
+
+    .modulo-busqueda-wrap {
+        margin: 0 0 14px;
+        max-width: none;
+    }
+
+    .input-busqueda-modulo {
+        font-size: 16px; /* evita zoom automático en iOS */
+        min-height: 44px;
+    }
+
+    .config-cuenta-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-cuenta-bar .btn-secondary {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .tema-acciones {
         flex-direction: column;
     }
-    
+
+    .tema-acciones .btn-primary,
+    .tema-acciones .btn-secondary {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .tema-fondo-upload {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tema-fondo-upload .btn-secondary,
+    .tema-fondo-upload .btn-primary {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .cal-nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .cal-nav .btn-secondary {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .cal-titulo-mes {
+        min-width: 0;
+    }
+
+    .table-container {
+        margin: 0 -4px;
+        border-radius: 8px;
+    }
+
+    .data-table {
+        font-size: 0.88em;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 10px 8px;
+    }
+
+    .td-acciones-inventario .btn-small {
+        display: block;
+        width: 100%;
+        margin: 4px 0;
+        min-height: 40px;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-width: none;
+        padding: 22px 16px;
+        margin: 12px;
+        max-height: calc(100vh - 24px);
+        border-radius: 14px;
+    }
+
+    .modal-large {
+        max-width: none;
+    }
+
+    .modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .modal-actions .btn-primary,
+    .modal-actions .btn-secondary,
+    .modal-actions .btn-danger {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .camas-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .camas-section .form-group {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .camas-list {
+        grid-template-columns: 1fr;
+    }
+
+    .banner-salidas-hoy {
+        padding: 12px;
+        font-size: 0.88em;
+    }
+
+    .banner-salidas-linea {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .banner-salidas-linea .btn-small {
+        width: 100%;
+        min-height: 40px;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        min-height: 44px;
+    }
+}
+
+/* Móvil pequeño (hasta 480px) */
+@media (max-width: 480px) {
+    body {
+        padding: 4px;
+    }
+
+    .container {
+        border-radius: 8px;
+    }
+
+    .header h1 {
+        font-size: 1.35em;
+    }
+
     .tab-btn {
-        border-bottom: none;
-        border-right: 3px solid transparent;
+        padding: 12px 12px;
+        font-size: 0.85em;
     }
-    
-    .tab-btn.active {
-        border-right-color: var(--color-primary);
-        border-bottom-color: transparent;
+
+    .seccion {
+        padding: 12px 8px;
+    }
+
+    .habitacion-numero {
+        font-size: 1.2em;
+    }
+
+    .indicador-valor {
+        font-size: 1.6rem;
+    }
+
+    .ocupacion-chip {
+        flex: 1 1 calc(50% - 8px);
+        justify-content: center;
+    }
+
+    .close {
+        right: 12px;
+        top: 12px;
+    }
+}
+
+/* Escritorio ancho: pestañas repartidas en una fila */
+@media (min-width: 1025px) {
+    .tabs {
+        overflow-x: visible;
+    }
+
+    .tab-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        white-space: normal;
     }
 }

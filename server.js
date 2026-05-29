@@ -10,6 +10,7 @@ const db = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const FONDO_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'fondos');
 if (!fs.existsSync(FONDO_UPLOAD_DIR)) {
@@ -43,22 +44,31 @@ app.use(cors({
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
       return callback(null, true);
     }
+    // Permite el mismo dominio en producción (Render, etc.)
+    if (IS_PRODUCTION && /^https:\/\/.+/i.test(origin)) {
+      return callback(null, true);
+    }
     return callback(null, false);
   },
   credentials: true
 }));
+
+if (IS_PRODUCTION) {
+  app.set('trust proxy', 1);
+}
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Configuración de sesiones
 app.use(session({
-  secret: 'hotel-reservas-secret-key-2024',
+  secret: process.env.SESSION_SECRET || 'hotel-reservas-secret-key-2024',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // En producción con HTTPS debería ser true
+    secure: IS_PRODUCTION,
     httpOnly: true,
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 horas
   }
 }));
@@ -129,15 +139,20 @@ app.post('/api/login', (req, res) => {
       // Actualizar último acceso
       db.updateLastAccess(user.id, () => {});
 
-      res.json({
-        message: 'Login exitoso',
-        user: {
-          id: user.id,
-          username: user.username,
-          nombre: user.nombre,
-          rol,
-          activo: db.usuarioEstaActivo(user.activo) ? 1 : 0
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          return res.status(500).json({ error: 'No se pudo guardar la sesión. Intente de nuevo.' });
         }
+        res.json({
+          message: 'Login exitoso',
+          user: {
+            id: user.id,
+            username: user.username,
+            nombre: user.nombre,
+            rol,
+            activo: db.usuarioEstaActivo(user.activo) ? 1 : 0
+          }
+        });
       });
     });
   });
@@ -1018,6 +1033,14 @@ app.delete('/api/reservas-chinchorros/:id', requireAuth, (req, res) => {
       res.json({ message: 'Reserva de chinchorro eliminada' });
     }
   });
+});
+
+// Entrada principal: login o app según sesión
+app.get('/', (req, res) => {
+  if (req.session && req.session.userId) {
+    return res.redirect('/index.html');
+  }
+  return res.redirect('/login.html');
 });
 
 // Servir estáticos después de rutas API (evita que archivos públicos interfieran con /api).

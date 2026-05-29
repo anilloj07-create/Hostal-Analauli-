@@ -160,6 +160,84 @@ function textoValorReservaChinchorro(r) {
     return `<span class="txt-precio-small">${formatoMoneda(p)} /día<br><strong>${formatoMoneda(p * u)}</strong> <span class="muted">(${u} días)</span></span>`;
 }
 
+function valorMonetarioReservaHabitacion(r) {
+    const p = Number(r.habitacion_precio_diario);
+    if (!Number.isFinite(p) || p <= 0) return 0;
+    return p * unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+}
+
+function valorMonetarioReservaChinchorro(r) {
+    const p = Number(r.chinchorro_precio_diario);
+    if (!Number.isFinite(p) || p <= 0) return 0;
+    return p * unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+}
+
+function sumarValoresReservas(lista, fnValor) {
+    return lista.reduce((acc, r) => acc + fnValor(r), 0);
+}
+
+function calcularResumenFinancieroReservas() {
+    const habNoCancel = reservas.filter((r) => r.estado !== 'Cancelada');
+    const chinNoCancel = reservasChinchorros.filter((r) => r.estado !== 'Cancelada');
+    const habActivas = reservas.filter((r) => r.estado === 'Activa');
+    const chinActivas = reservasChinchorros.filter((r) => r.estado === 'Activa');
+    const habFinal = reservas.filter((r) => r.estado === 'Finalizada');
+    const chinFinal = reservasChinchorros.filter((r) => r.estado === 'Finalizada');
+
+    const ingresosHab = sumarValoresReservas(habNoCancel, valorMonetarioReservaHabitacion);
+    const ingresosChin = sumarValoresReservas(chinNoCancel, valorMonetarioReservaChinchorro);
+    const pagadoHab = sumarValoresReservas(habFinal, valorMonetarioReservaHabitacion);
+    const pagadoChin = sumarValoresReservas(chinFinal, valorMonetarioReservaChinchorro);
+    const adeudadoHab = sumarValoresReservas(habActivas, valorMonetarioReservaHabitacion);
+    const adeudadoChin = sumarValoresReservas(chinActivas, valorMonetarioReservaChinchorro);
+
+    return {
+        ingresosTotales: ingresosHab + ingresosChin,
+        pagado: pagadoHab + pagadoChin,
+        adeudado: adeudadoHab + adeudadoChin,
+        ingresosHab,
+        ingresosChin,
+        pagadoHab,
+        pagadoChin,
+        adeudadoHab,
+        adeudadoChin,
+        countHab: habNoCancel.length,
+        countChin: chinNoCancel.length
+    };
+}
+
+function htmlFinCard(clase, etiqueta, monto, detalle) {
+    return `
+        <article class="fin-card ${clase}">
+            <p class="fin-card-label">${etiqueta}</p>
+            <p class="fin-card-monto">${formatoMoneda(monto)}</p>
+            ${detalle ? `<p class="fin-card-detalle">${detalle}</p>` : ''}
+        </article>
+    `;
+}
+
+function renderIndicadoresFinanciero() {
+    const panel = document.getElementById('indicadoresFinancieros');
+    if (!panel) return;
+
+    const f = calcularResumenFinancieroReservas();
+    const detHabIng = `Habitaciones: ${formatoMoneda(f.ingresosHab)} · ${f.countHab} reserva(s)`;
+    const detChinIng = `Chinchorros: ${formatoMoneda(f.ingresosChin)} · ${f.countChin} reserva(s)`;
+
+    panel.innerHTML = `
+        <div class="fin-estado-grid">
+            ${htmlFinCard('fin-ingresos', 'Ingresos Totales', f.ingresosTotales, `${detHabIng}<br>${detChinIng}`)}
+            ${htmlFinCard('fin-pagado', 'Pagado', f.pagado, `Finalizadas · Hab. ${formatoMoneda(f.pagadoHab)} · Chin. ${formatoMoneda(f.pagadoChin)}`)}
+            ${htmlFinCard('fin-adeudado', 'Adeudado', f.adeudado, `Activas (pendiente) · Hab. ${formatoMoneda(f.adeudadoHab)} · Chin. ${formatoMoneda(f.adeudadoChin)}`)}
+        </div>
+        <p class="fin-estado-nota">
+            Los montos se calculan con la tarifa registrada en cada reserva (noches × tarifa/noche o días × tarifa/día).
+            <strong>Pagado</strong> = reservas finalizadas; <strong>Adeudado</strong> = reservas activas aún en curso.
+            Las canceladas no se incluyen en ingresos totales.
+        </p>
+    `;
+}
+
 function descartarBannerSalidasHoy() {
     sessionStorage.setItem(`bannerSalidasDescartado_${fechaLocalYMD()}`, '1');
     const banner = document.getElementById('bannerSalidasHoy');
@@ -420,6 +498,7 @@ function mostrarSeccion(seccion, boton) {
     if (seccion === 'indicadores') {
         refrescarPanelesOcupacionDual();
         renderIndicadoresOcupacion();
+        renderIndicadoresFinanciero();
     }
     if (seccion === 'calendario') {
         actualizarCalendarioDisponibilidad();
@@ -1079,6 +1158,7 @@ async function actualizarIndicadoresOcupacion() {
         cargarReservasChinchorros()
     ]);
     renderIndicadoresOcupacion();
+    renderIndicadoresFinanciero();
     refrescarPanelesOcupacionDual();
 }
 
@@ -1089,6 +1169,7 @@ function mostrarHabitaciones() {
     actualizarResumenOcupacion();
     refrescarPanelesOcupacionDual();
     renderIndicadoresOcupacion();
+    renderIndicadoresFinanciero();
 
     aplicarLayoutsVistasInventarioDesdeHotel();
 
@@ -1216,7 +1297,7 @@ async function guardarHabitacion(event) {
     const precioRaw = document.getElementById('precioHabitacion').value;
     const precio_diario =
         precioRaw === '' || precioRaw == null ? 0 : Math.max(0, parseFloat(precioRaw) || 0);
-    
+
     try {
         let response;
         if (idEd) {
@@ -1232,7 +1313,7 @@ async function guardarHabitacion(event) {
                 body: JSON.stringify({ numero, tipo, precio_diario })
             });
         }
-        
+
         if (response.ok) {
             cerrarModal('modalHabitacion');
             cargarHabitaciones();
@@ -1498,6 +1579,7 @@ async function cargarReservasChinchorros() {
         mostrarReservasChinchorros();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
+        renderIndicadoresFinanciero();
     } catch (error) {
         console.error('Error al cargar reservas de chinchorros:', error);
     }
@@ -1560,6 +1642,20 @@ function actualizarSelectsReservaChinchorro() {
             o.textContent = `${h.nombre} ${h.apellido || ''}`.trim();
             selH.appendChild(o);
         });
+    }
+}
+
+function mostrarModalElegirTipoReserva() {
+    const modal = document.getElementById('modalElegirTipoReserva');
+    if (modal) modal.classList.add('active');
+}
+
+function elegirTipoReserva(tipo) {
+    cerrarModal('modalElegirTipoReserva');
+    if (tipo === 'habitacion') {
+        mostrarModalReserva();
+    } else if (tipo === 'chinchorro') {
+        mostrarModalReservaChinchorro();
     }
 }
 
@@ -1985,6 +2081,7 @@ async function cargarReservas() {
         actualizarSelectsReserva();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
+        renderIndicadoresFinanciero();
     } catch (error) {
         console.error('Error al cargar reservas:', error);
     }

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -151,6 +151,14 @@
             animation: shake 0.5s;
         }
 
+        .login-ayuda-credenciales {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #666;
+            line-height: 1.4;
+        }
+
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-10px); }
@@ -174,12 +182,45 @@
         }
 
         @media (max-width: 768px) {
+            .login-container {
+                padding: 12px;
+                align-items: flex-start;
+                padding-top: 24px;
+            }
+
             .login-box {
-                padding: 30px 20px;
+                padding: 28px 18px;
+                border-radius: 14px;
+                max-width: none;
             }
 
             .login-header h1 {
-                font-size: 1.8em;
+                font-size: 1.65em;
+                word-break: break-word;
+            }
+
+            .login-icon {
+                font-size: 3em;
+            }
+
+            .form-group-login input {
+                font-size: 16px;
+                min-height: 48px;
+            }
+
+            .btn-login {
+                min-height: 48px;
+                font-size: 1.05em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 22px 14px;
+            }
+
+            .login-header h1 {
+                font-size: 1.4em;
             }
         }
     </style>
@@ -195,7 +236,7 @@
 
             <div class="error-message" id="errorMessage"></div>
 
-            <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
+            <form class="login-form" id="loginForm">
                 <div class="form-group-login">
                     <label for="username">Usuario</label>
                     <input 
@@ -225,6 +266,9 @@
                     Iniciar Sesión
                 </button>
             </form>
+            <p class="login-ayuda-credenciales">
+                Acceso inicial: usuario <strong>admin</strong> · contraseña <strong>admin123</strong>
+            </p>
         </div>
     </div>
 
@@ -312,23 +356,37 @@
                     credentials: 'include',
                     body: JSON.stringify({ username, password })
                 });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    window.location.href = '/index.html';
-                } else {
-                    errorMessage.textContent = data.error || 'Error al iniciar sesión';
-                    if (response.status === 403) {
-                        errorMessage.textContent +=
-                            ' Si acaba de crear la cuenta, pida al administrador que verifique que no esté anulada en Configuración.';
+
+                let data = {};
+                const raw = await response.text();
+                if (raw) {
+                    try {
+                        data = JSON.parse(raw);
+                    } catch (_) {
+                        data = { error: raw.slice(0, 200) };
                     }
-                    errorMessage.classList.add('show');
-                    loginButton.disabled = false;
-                    loginButton.textContent = 'Iniciar Sesión';
                 }
+
+                if (response.ok) {
+                    window.location.replace('/index.html');
+                    return;
+                }
+
+                errorMessage.textContent = data.error || 'Error al iniciar sesión';
+                if (response.status === 401) {
+                    errorMessage.textContent +=
+                        ' Revise usuario y contraseña (inicial: admin / admin123).';
+                }
+                if (response.status === 403) {
+                    errorMessage.textContent +=
+                        ' Si acaba de crear la cuenta, pida al administrador que verifique que no esté anulada en Configuración.';
+                }
+                errorMessage.classList.add('show');
+                loginButton.disabled = false;
+                loginButton.textContent = 'Iniciar Sesión';
             } catch (error) {
-                errorMessage.textContent = 'Error de conexión. Verifique que el servidor esté corriendo.';
+                errorMessage.textContent =
+                    'Error de conexión. Abra http://localhost:3000 y verifique que el servidor esté corriendo (npm start).';
                 errorMessage.classList.add('show');
                 loginButton.disabled = false;
                 loginButton.textContent = 'Iniciar Sesión';
@@ -363,12 +421,9 @@
             checkAuth();
         })();
 
-        // Permitir envío con Enter
-        document.getElementById('password').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
-            }
-        });
+        // Enter en contraseña: enviar formulario correctamente
+        document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        document.getElementById('loginForm').removeAttribute('onsubmit');
     </script>
 </body>
 </html>

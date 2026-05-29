@@ -2,9 +2,9 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
     <div class="container">
@@ -108,8 +108,7 @@
             <div class="section-header section-header-wrap">
                 <h2>Gestión de Reservas</h2>
                 <div class="section-header-btns">
-                    <button type="button" class="btn-primary" onclick="mostrarModalReserva()">+ Nueva reserva habitación</button>
-                    <button type="button" class="btn-secondary" onclick="mostrarModalReservaChinchorro()">+ Reserva chinchorro</button>
+                    <button type="button" class="btn-primary" onclick="mostrarModalElegirTipoReserva()">+ Nueva reserva</button>
                 </div>
             </div>
             <div class="modulo-busqueda-wrap">
@@ -205,10 +204,16 @@
         <!-- Sección Indicadores -->
         <section id="seccion-indicadores" class="seccion">
             <div class="section-header section-header-wrap">
-                <h2>Indicadores de ocupación</h2>
+                <h2>Indicadores</h2>
                 <button type="button" class="btn-secondary" onclick="actualizarIndicadoresOcupacion()">🔄 Actualizar indicadores</button>
             </div>
-            <p class="section-intro">Módulo para monitorear el porcentaje de ocupación actual de habitaciones, chinchorros y reservas activas del sistema.</p>
+            <p class="section-intro">
+                Resumen de ocupación y <strong>estado financiero</strong> calculado desde las tarifas de reservas de habitaciones y chinchorros
+                (noches o días × tarifa diaria).
+            </p>
+
+            <h3 class="subsection-title">💰 Estado financiero</h3>
+            <div id="indicadoresFinancieros" class="fin-estado-panel" aria-live="polite"></div>
 
             <h3 class="subsection-title">Resumen rápido (barras)</h3>
             <div class="dual-ocupacion" aria-label="Ocupación habitaciones y chinchorros">
@@ -437,6 +442,34 @@
         </div>
     </div>
 
+    <!-- Modal Nuevo Chinchorro -->
+    <div id="modalChinchorro" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal('modalChinchorro')">&times;</span>
+            <h2 id="tituloModalChinchorro">Nuevo chinchorro</h2>
+            <form id="formChinchorro" onsubmit="guardarChinchorro(event)">
+                <input type="hidden" id="idChinchorroEdicion" value="">
+                <div class="form-group">
+                    <label>Código / número *</label>
+                    <input type="text" id="codigoChinchorro" required placeholder="Ej: CH-01">
+                </div>
+                <div class="form-group">
+                    <label>Zona o ubicación</label>
+                    <input type="text" id="zonaChinchorro" placeholder="Ej: Playa, piscina">
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por día</label>
+                    <input type="number" id="precioChinchorro" min="0" step="0.01" value="0" placeholder="0.00">
+                    <small class="form-hint">Valor de referencia por cada día de alquiler.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary" id="btnSubmitChinchorro">Guardar</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalChinchorro')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal para Gestionar Camas -->
     <div id="modalCamas" class="modal">
         <div class="modal-content modal-large">
@@ -499,6 +532,27 @@
         </div>
     </div>
 
+    <!-- Modal: elegir tipo de reserva -->
+    <div id="modalElegirTipoReserva" class="modal">
+        <div class="modal-content modal-content-compact">
+            <span class="close" onclick="cerrarModal('modalElegirTipoReserva')">&times;</span>
+            <h2>Nueva reserva</h2>
+            <p class="modal-hint">Seleccione qué desea reservar:</p>
+            <div class="reserva-tipo-grid">
+                <button type="button" class="reserva-tipo-card" onclick="elegirTipoReserva('habitacion')">
+                    <span class="reserva-tipo-icon" aria-hidden="true">🛏️</span>
+                    <span class="reserva-tipo-titulo">Habitación con cama</span>
+                    <span class="reserva-tipo-desc">Habitación para huésped con noches de estadía</span>
+                </button>
+                <button type="button" class="reserva-tipo-card" onclick="elegirTipoReserva('chinchorro')">
+                    <span class="reserva-tipo-icon" aria-hidden="true">🏖️</span>
+                    <span class="reserva-tipo-titulo">Chinchorros</span>
+                    <span class="reserva-tipo-desc">Alquiler de chinchorro por días</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal para Crear Reserva -->
     <div id="modalReserva" class="modal">
         <div class="modal-content">
@@ -532,34 +586,6 @@
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary" id="btnSubmitReserva">Reservar</button>
                     <button type="button" class="btn-secondary" onclick="cerrarModal('modalReserva')">Cancelar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modal Nuevo Chinchorro -->
-    <div id="modalChinchorro" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="cerrarModal('modalChinchorro')">&times;</span>
-            <h2 id="tituloModalChinchorro">Nuevo chinchorro</h2>
-            <form id="formChinchorro" onsubmit="guardarChinchorro(event)">
-                <input type="hidden" id="idChinchorroEdicion" value="">
-                <div class="form-group">
-                    <label>Código / número *</label>
-                    <input type="text" id="codigoChinchorro" required placeholder="Ej: CH-01">
-                </div>
-                <div class="form-group">
-                    <label>Zona o ubicación</label>
-                    <input type="text" id="zonaChinchorro" placeholder="Ej: Playa, piscina">
-                </div>
-                <div class="form-group">
-                    <label>Tarifa por día</label>
-                    <input type="number" id="precioChinchorro" min="0" step="0.01" value="0" placeholder="0.00">
-                    <small class="form-hint">Valor de referencia por cada día de alquiler.</small>
-                </div>
-                <div class="modal-actions">
-                    <button type="submit" class="btn-primary" id="btnSubmitChinchorro">Guardar</button>
-                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalChinchorro')">Cancelar</button>
                 </div>
             </form>
         </div>
@@ -731,7 +757,7 @@
         </div>
     </div>
 
-    <script src="theme-apply.js?v=4"></script>
-    <script src="app.js?v=4"></script>
+    <script src="theme-apply.js?v=5"></script>
+    <script src="app.js?v=9"></script>
 </body>
 </html>
