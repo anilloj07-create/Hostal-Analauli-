@@ -11,8 +11,11 @@ const db = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : null;
 
-const FONDO_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'fondos');
+const FONDO_UPLOAD_DIR = DATA_DIR
+  ? path.join(DATA_DIR, 'uploads', 'fondos')
+  : path.join(__dirname, 'public', 'uploads', 'fondos');
 if (!fs.existsSync(FONDO_UPLOAD_DIR)) {
   fs.mkdirSync(FONDO_UPLOAD_DIR, { recursive: true });
 }
@@ -1043,11 +1046,23 @@ app.get('/', (req, res) => {
   return res.redirect('/login.html');
 });
 
+// Imágenes subidas fuera de /public (producción con DATA_DIR=/data)
+if (DATA_DIR) {
+  const uploadsRoot = path.join(DATA_DIR, 'uploads');
+  if (!fs.existsSync(uploadsRoot)) {
+    fs.mkdirSync(uploadsRoot, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsRoot));
+}
+
 // Servir estáticos después de rutas API (evita que archivos públicos interfieran con /api).
 app.use(express.static('public'));
 
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  if (DATA_DIR) {
+    console.log(`Datos persistentes en: ${DATA_DIR}`);
+  }
   console.log('API: GET /api/hotel/nombre | GET /api/hotel/apariencia | PUT /api/hotel/tema');
 });
