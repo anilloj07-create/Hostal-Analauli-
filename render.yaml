@@ -1,0 +1,19 @@
+# Despliegue en Render: https://render.com
+# Conecta el repo y Render aplicará esta configuración.
+services:
+  - type: web
+    name: hostal-analauli
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: SESSION_SECRET
+        generateValue: true
+    disk:
+      name: datos-hostal
+      mountPath: /data
+      sizeGB: 1
