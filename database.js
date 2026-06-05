@@ -70,14 +70,32 @@ function initDatabase() {
     // Tabla de habitaciones
     db.run(`CREATE TABLE IF NOT EXISTS habitaciones (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      codigo TEXT UNIQUE,
       numero TEXT NOT NULL UNIQUE,
+      nombre TEXT,
       tipo TEXT,
+      piso TEXT,
       estado TEXT NOT NULL DEFAULT 'Disponible',
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) {
         console.error('Error al crear tabla habitaciones:', err);
       } else {
+        db.run('ALTER TABLE habitaciones ADD COLUMN codigo TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración código habitaciones:', e.message);
+          }
+        });
+        db.run('ALTER TABLE habitaciones ADD COLUMN nombre TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración nombre habitaciones:', e.message);
+          }
+        });
+        db.run('ALTER TABLE habitaciones ADD COLUMN piso TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración piso habitaciones:', e.message);
+          }
+        });
         db.run('ALTER TABLE habitaciones ADD COLUMN precio_diario REAL DEFAULT 0', (e) => {
           if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
             console.error('Migración precio habitaciones:', e.message);
@@ -104,10 +122,16 @@ function initDatabase() {
       apellido TEXT,
       email TEXT,
       telefono TEXT,
+      tipo_documento TEXT DEFAULT 'Cédula',
       documento TEXT,
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) console.error('Error al crear tabla huespedes:', err);
+    });
+    db.run("ALTER TABLE huespedes ADD COLUMN tipo_documento TEXT DEFAULT 'Cédula'", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración tipo documento huéspedes:', e.message);
+      }
     });
 
     // Tabla de reservas
@@ -115,6 +139,11 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       habitacion_id INTEGER NOT NULL,
       huesped_id INTEGER NOT NULL,
+      adultos INTEGER NOT NULL DEFAULT 1,
+      ninos INTEGER NOT NULL DEFAULT 0,
+      tipo_habitacion_requerida TEXT,
+      metodo_pago TEXT DEFAULT 'Efectivo',
+      observaciones TEXT,
       fecha_ingreso DATE NOT NULL,
       fecha_salida DATE NOT NULL,
       estado TEXT NOT NULL DEFAULT 'Activa',
@@ -124,11 +153,45 @@ function initDatabase() {
     )`, (err) => {
       if (err) console.error('Error al crear tabla reservas:', err);
     });
+    db.run("ALTER TABLE reservas ADD COLUMN adultos INTEGER NOT NULL DEFAULT 1", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración adultos reservas:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas ADD COLUMN ninos INTEGER NOT NULL DEFAULT 0", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración ninos reservas:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas ADD COLUMN tipo_habitacion_requerida TEXT", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración tipo habitación requerida reservas:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas ADD COLUMN metodo_pago TEXT DEFAULT 'Efectivo'", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración método pago reservas:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas ADD COLUMN observaciones TEXT", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración observaciones reservas:', e.message);
+      }
+    });
+    db.run('ALTER TABLE reservas ADD COLUMN tarifa_noche REAL DEFAULT 0', (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración tarifa_noche reservas:', e.message);
+      }
+    });
 
     // Chinchorros (alquiler)
     db.run(`CREATE TABLE IF NOT EXISTS chinchorros (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       codigo TEXT NOT NULL UNIQUE,
+      numero TEXT,
+      nombre TEXT,
+      tipo TEXT,
+      piso TEXT,
       zona TEXT,
       estado TEXT NOT NULL DEFAULT 'Disponible',
       fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -136,6 +199,26 @@ function initDatabase() {
       if (err) {
         console.error('Error al crear tabla chinchorros:', err);
       } else {
+        db.run('ALTER TABLE chinchorros ADD COLUMN numero TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración numero chinchorros:', e.message);
+          }
+        });
+        db.run('ALTER TABLE chinchorros ADD COLUMN nombre TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración nombre chinchorros:', e.message);
+          }
+        });
+        db.run('ALTER TABLE chinchorros ADD COLUMN tipo TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración tipo chinchorros:', e.message);
+          }
+        });
+        db.run('ALTER TABLE chinchorros ADD COLUMN piso TEXT', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración piso chinchorros:', e.message);
+          }
+        });
         db.run('ALTER TABLE chinchorros ADD COLUMN precio_diario REAL DEFAULT 0', (e) => {
           if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
             console.error('Migración precio chinchorros:', e.message);
@@ -148,6 +231,11 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chinchorro_id INTEGER NOT NULL,
       huesped_id INTEGER NOT NULL,
+      adultos INTEGER NOT NULL DEFAULT 1,
+      ninos INTEGER NOT NULL DEFAULT 0,
+      tipo_requerido TEXT,
+      metodo_pago TEXT DEFAULT 'Efectivo',
+      observaciones TEXT,
       fecha_ingreso DATE NOT NULL,
       fecha_salida DATE NOT NULL,
       estado TEXT NOT NULL DEFAULT 'Activa',
@@ -156,6 +244,36 @@ function initDatabase() {
       FOREIGN KEY (huesped_id) REFERENCES huespedes(id) ON DELETE CASCADE
     )`, (err) => {
       if (err) console.error('Error al crear tabla reservas_chinchorros:', err);
+    });
+    db.run("ALTER TABLE reservas_chinchorros ADD COLUMN adultos INTEGER NOT NULL DEFAULT 1", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración adultos reservas chinchorros:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas_chinchorros ADD COLUMN ninos INTEGER NOT NULL DEFAULT 0", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración ninos reservas chinchorros:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas_chinchorros ADD COLUMN tipo_requerido TEXT", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración tipo requerido reservas chinchorros:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas_chinchorros ADD COLUMN metodo_pago TEXT DEFAULT 'Efectivo'", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración método pago reservas chinchorros:', e.message);
+      }
+    });
+    db.run("ALTER TABLE reservas_chinchorros ADD COLUMN observaciones TEXT", (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración observaciones reservas chinchorros:', e.message);
+      }
+    });
+    db.run('ALTER TABLE reservas_chinchorros ADD COLUMN tarifa_dia REAL DEFAULT 0', (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración tarifa_dia reservas chinchorros:', e.message);
+      }
     });
 
     // Tabla de usuarios (rol: administrador | operador)
@@ -348,34 +466,57 @@ function getHabitacionById(id, callback) {
   db.get("SELECT * FROM habitaciones WHERE id = ?", [id], callback);
 }
 
-function createHabitacion(numero, tipo, precio_diario, callback) {
+function createHabitacion(codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
+  const est = estado || 'Disponible';
   db.run(
-    "INSERT INTO habitaciones (numero, tipo, estado, precio_diario) VALUES (?, ?, 'Disponible', ?)",
-    [numero, tipo, precio],
+    "INSERT INTO habitaciones (codigo, numero, nombre, tipo, piso, estado, precio_diario) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [codigo, numero, nombre || null, tipo, piso || null, est, precio],
     function(err) {
       if (err) {
         callback(err);
       } else {
-        callback(null, { id: this.lastID, numero, tipo, estado: 'Disponible', precio_diario: precio });
+        callback(null, { id: this.lastID, codigo, numero, nombre, tipo, piso, estado: est, precio_diario: precio });
       }
     }
   );
 }
 
-function updateHabitacionDatos(id, numero, tipo, precio_diario, callback) {
+function updateHabitacionDatos(id, codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
+  const cod = codigo != null ? String(codigo).trim() : '';
+  const codigoSeguro = cod || `HAB-${id}`;
+  const numRaw = numero != null ? String(numero).trim() : '';
+  const nomRaw = nombre != null ? String(nombre).trim() : '';
+  const numeroSeguro = numRaw || codigoSeguro || nomRaw || `HAB-${id}`;
   db.run(
-    'UPDATE habitaciones SET numero = ?, tipo = ?, precio_diario = ? WHERE id = ?',
-    [numero, tipo || 'Estándar', precio, id],
+    'UPDATE habitaciones SET codigo = ?, numero = ?, nombre = ?, tipo = ?, piso = ?, estado = ?, precio_diario = ? WHERE id = ?',
+    [codigoSeguro, numeroSeguro, nombre || null, tipo || 'Sencilla', piso || null, estado || 'Disponible', precio, id],
     callback
   );
 }
 
 function updateHabitacionEstado(id, estado, callback) {
   db.run("UPDATE habitaciones SET estado = ? WHERE id = ?", [estado, id], callback);
+}
+
+/** Reserva activa que incluye la fecha de hoy para la habitación. */
+function habitacionTieneReservaActivaHoy(habitacion_id, callback) {
+  db.get(
+    `
+      SELECT COUNT(*) as count FROM reservas
+      WHERE habitacion_id = ?
+      AND estado = 'Activa'
+      AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
+    `,
+    [habitacion_id],
+    (err, row) => {
+      if (err) return callback(err);
+      callback(null, row && Number(row.count) > 0);
+    }
+  );
 }
 
 function deleteHabitacion(id, callback) {
@@ -411,9 +552,9 @@ function getHuespedById(id, callback) {
   db.get("SELECT * FROM huespedes WHERE id = ?", [id], callback);
 }
 
-function createHuesped(nombre, apellido, email, telefono, documento, callback) {
-  db.run("INSERT INTO huespedes (nombre, apellido, email, telefono, documento) VALUES (?, ?, ?, ?, ?)", 
-    [nombre, apellido, email, telefono, documento], function(err) {
+function createHuesped(nombre, apellido, email, telefono, tipo_documento, documento, callback) {
+  db.run("INSERT INTO huespedes (nombre, apellido, email, telefono, tipo_documento, documento) VALUES (?, ?, ?, ?, ?, ?)", 
+    [nombre, apellido, email, telefono, tipo_documento || 'Cédula', documento], function(err) {
     if (err) {
       callback(err);
     } else {
@@ -423,21 +564,22 @@ function createHuesped(nombre, apellido, email, telefono, documento, callback) {
         apellido, 
         email, 
         telefono, 
+        tipo_documento: tipo_documento || 'Cédula',
         documento 
       });
     }
   });
 }
 
-function updateHuesped(id, nombre, apellido, email, telefono, documento, callback) {
+function updateHuesped(id, nombre, apellido, email, telefono, tipo_documento, documento, callback) {
   db.run(
-    "UPDATE huespedes SET nombre = ?, apellido = ?, email = ?, telefono = ?, documento = ? WHERE id = ?",
-    [nombre, apellido, email, telefono, documento, id],
+    "UPDATE huespedes SET nombre = ?, apellido = ?, email = ?, telefono = ?, tipo_documento = ?, documento = ? WHERE id = ?",
+    [nombre, apellido, email, telefono, tipo_documento || 'Cédula', documento, id],
     function(err) {
       if (err) {
         callback(err);
       } else {
-        callback(null, { id, nombre, apellido, email, telefono, documento });
+        callback(null, { id, nombre, apellido, email, telefono, tipo_documento: tipo_documento || 'Cédula', documento });
       }
     }
   );
@@ -452,7 +594,9 @@ function getAllReservas(callback) {
   db.all(`
     SELECT r.*,
            h.numero as habitacion_numero,
-           h.precio_diario as habitacion_precio_diario,
+           h.nombre as habitacion_nombre,
+           COALESCE(NULLIF(r.tarifa_noche, 0), h.precio_diario, 0) as habitacion_precio_diario,
+           r.tarifa_noche as reserva_tarifa_noche,
            hu.nombre as huesped_nombre,
            hu.apellido as huesped_apellido,
            hu.email as huesped_email
@@ -467,28 +611,59 @@ function getReservaById(id, callback) {
   db.get('SELECT * FROM reservas WHERE id = ?', [id], callback);
 }
 
-/** Ajusta ocupación de habitación según reservas activas que incluyan la fecha actual. */
-function sincronizarEstadoHabitacionConReservas(habitacion_id, callback) {
-  db.all(
-    `
-      SELECT COUNT(*) as count FROM reservas 
-      WHERE habitacion_id = ? 
-      AND estado = 'Activa'
-      AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-    `,
-    [habitacion_id],
-    (err, rows) => {
-      if (err) {
-        callback(err);
-        return;
-      }
-      const ocupada = rows && rows[0] && rows[0].count > 0;
-      updateHabitacionEstado(habitacion_id, ocupada ? 'Ocupada' : 'Disponible', (e2) => callback(e2));
-    }
-  );
+/**
+ * Calcula estado de inventario según reservas activas:
+ * - Ocupada: reserva activa que incluye hoy
+ * - Reservada: reserva activa futura (sin ocupar hoy)
+ * - Disponible: sin reservas activas relevantes
+ * Conserva Fuera de servicio y En limpieza si no hay ocupación hoy.
+ */
+function resolverEstadoInventarioDesdeReservas(estadoActual, cntHoy, cntFuturo) {
+  const est = String(estadoActual || 'Disponible');
+  if (est === 'Fuera de servicio') return 'Fuera de servicio';
+  if (est === 'En limpieza') return 'En limpieza';
+  if (Number(cntHoy) > 0) return 'Ocupada';
+  if (Number(cntFuturo) > 0) return 'Reservada';
+  return 'Disponible';
 }
 
-function updateReservaDatos(id, habitacion_id, huesped_id, fecha_ingreso, fecha_salida, callback) {
+function sincronizarEstadoHabitacionConReservas(habitacion_id, callback) {
+  getHabitacionById(habitacion_id, (e0, hab) => {
+    if (e0) return callback(e0);
+    if (!hab) return callback(new Error('Habitación no encontrada'));
+    db.get(
+      `
+        SELECT
+          SUM(CASE WHEN DATE('now') BETWEEN fecha_ingreso AND fecha_salida THEN 1 ELSE 0 END) as cnt_hoy,
+          SUM(CASE WHEN DATE('now') < fecha_ingreso THEN 1 ELSE 0 END) as cnt_futuro
+        FROM reservas
+        WHERE habitacion_id = ? AND estado = 'Activa'
+      `,
+      [habitacion_id],
+      (err, agg) => {
+        if (err) return callback(err);
+        const nuevo = resolverEstadoInventarioDesdeReservas(
+          hab.estado,
+          agg && agg.cnt_hoy,
+          agg && agg.cnt_futuro
+        );
+        if (nuevo === hab.estado) return callback(null);
+        updateHabitacionEstado(habitacion_id, nuevo, callback);
+      }
+    );
+  });
+}
+
+function mensajeInventarioNoReservable(estado, tipo) {
+  const e = String(estado || '').trim();
+  if (e !== 'En limpieza' && e !== 'Fuera de servicio') return null;
+  const unidad = tipo === 'chinchorro' ? 'El chinchorro' : 'La habitación';
+  return `${unidad} está en limpieza o fuera de servicio y no admite reservas.`;
+}
+
+function updateReservaDatos(id, habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, callback) {
+  const tarifaRaw = tarifa_noche == null || tarifa_noche === '' ? 0 : Number(tarifa_noche);
+  const tarifaSegura = Number.isFinite(tarifaRaw) && tarifaRaw >= 0 ? tarifaRaw : 0;
   getReservaById(id, (err, curr) => {
     if (err) {
       return callback(err);
@@ -499,9 +674,10 @@ function updateReservaDatos(id, habitacion_id, huesped_id, fecha_ingreso, fecha_
     const roomAnt = curr.habitacion_id;
 
     const aplicarActualizacion = () => {
+      const ejecutarUpdate = () => {
       db.run(
-        'UPDATE reservas SET habitacion_id = ?, huesped_id = ?, fecha_ingreso = ?, fecha_salida = ? WHERE id = ?',
-        [habitacion_id, huesped_id, fecha_ingreso, fecha_salida, id],
+        'UPDATE reservas SET habitacion_id = ?, huesped_id = ?, adultos = ?, ninos = ?, tipo_habitacion_requerida = ?, metodo_pago = ?, observaciones = ?, fecha_ingreso = ?, fecha_salida = ?, tarifa_noche = ? WHERE id = ?',
+        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, id],
         (runErr) => {
           if (runErr) {
             callback(runErr);
@@ -516,6 +692,18 @@ function updateReservaDatos(id, habitacion_id, huesped_id, fecha_ingreso, fecha_
           });
         }
       );
+      };
+
+      if (Number(roomAnt) === Number(habitacion_id)) {
+        return ejecutarUpdate();
+      }
+      getHabitacionById(habitacion_id, (errHab, hab) => {
+        if (errHab) return callback(errHab);
+        if (!hab) return callback(new Error('Habitación no encontrada'));
+        const msgEst = mensajeInventarioNoReservable(hab.estado, 'habitacion');
+        if (msgEst) return callback(new Error(msgEst));
+        ejecutarUpdate();
+      });
     };
 
     if (String(curr.estado) === 'Activa') {
@@ -545,7 +733,13 @@ function updateReservaDatos(id, habitacion_id, huesped_id, fecha_ingreso, fecha_
   });
 }
 
-function createReserva(habitacion_id, huesped_id, fecha_ingreso, fecha_salida, callback) {
+function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, callback) {
+  getHabitacionById(habitacion_id, (errHab, hab) => {
+    if (errHab) return callback(errHab);
+    if (!hab) return callback(new Error('Habitación no encontrada'));
+    const msgEst = mensajeInventarioNoReservable(hab.estado, 'habitacion');
+    if (msgEst) return callback(new Error(msgEst));
+
   // Verificar que la habitación esté disponible en esas fechas
   // Dos reservas se solapan si: (inicio1 < fin2) AND (inicio2 < fin1)
   db.all(`
@@ -560,50 +754,50 @@ function createReserva(habitacion_id, huesped_id, fecha_ingreso, fecha_salida, c
     } else if (rows.length > 0) {
       callback(new Error('La habitación ya está reservada en esas fechas'));
     } else {
-      db.run("INSERT INTO reservas (habitacion_id, huesped_id, fecha_ingreso, fecha_salida) VALUES (?, ?, ?, ?)", 
-        [habitacion_id, huesped_id, fecha_ingreso, fecha_salida], function(err) {
+      const tarifa = tarifa_noche == null || tarifa_noche === '' ? 0 : Number(tarifa_noche);
+      const tarifaSegura = Number.isFinite(tarifa) && tarifa >= 0 ? tarifa : 0;
+      db.run("INSERT INTO reservas (habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura], function(err) {
         if (err) {
           callback(err);
         } else {
-          // Actualizar estado de la habitación
-          updateHabitacionEstado(habitacion_id, 'Ocupada', () => {});
-          callback(null, { 
+          sincronizarEstadoHabitacionConReservas(habitacion_id, (syncErr) => {
+            if (syncErr) {
+              callback(syncErr);
+              return;
+            }
+            callback(null, { 
             id: this.lastID, 
             habitacion_id, 
             huesped_id, 
+            adultos,
+            ninos,
+            tipo_habitacion_requerida,
+            metodo_pago,
+            observaciones,
             fecha_ingreso, 
             fecha_salida,
+            tarifa_noche: tarifaSegura,
             estado: 'Activa'
+          });
           });
         }
       });
     }
   });
+  });
 }
 
 function updateReservaEstado(id, estado, callback) {
-  db.run("UPDATE reservas SET estado = ? WHERE id = ?", [estado, id], function(err) {
-    if (!err && (estado === 'Cancelada' || estado === 'Finalizada')) {
-      db.get("SELECT habitacion_id FROM reservas WHERE id = ?", [id], (err, row) => {
-        if (!err && row) {
-          db.all(
-            `
-            SELECT COUNT(*) as count FROM reservas 
-            WHERE habitacion_id = ? 
-            AND estado = 'Activa'
-            AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-          `,
-            [row.habitacion_id],
-            (err2, rows) => {
-              if (!err2 && rows[0].count === 0) {
-                updateHabitacionEstado(row.habitacion_id, 'Disponible', () => {});
-              }
-            }
-          );
-        }
-      });
+  db.run('UPDATE reservas SET estado = ? WHERE id = ?', [estado, id], function(err) {
+    if (err) {
+      return callback(err);
     }
-    callback(err);
+    db.get('SELECT habitacion_id FROM reservas WHERE id = ?', [id], (err2, row) => {
+      if (err2) return callback(err2);
+      if (!row) return callback(null);
+      sincronizarEstadoHabitacionConReservas(row.habitacion_id, (syncErr) => callback(syncErr || null));
+    });
   });
 }
 
@@ -614,17 +808,7 @@ function deleteReserva(id, callback) {
     } else {
       db.run("DELETE FROM reservas WHERE id = ?", [id], function(err) {
         if (!err && row) {
-          // Verificar si hay otras reservas activas
-          db.all(`
-            SELECT COUNT(*) as count FROM reservas 
-            WHERE habitacion_id = ? 
-            AND estado = 'Activa'
-            AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-          `, [row.habitacion_id], (err, rows) => {
-            if (!err && rows[0].count === 0) {
-              updateHabitacionEstado(row.habitacion_id, 'Disponible', () => {});
-            }
-          });
+          sincronizarEstadoHabitacionConReservas(row.habitacion_id, () => {});
         }
         callback(err);
       });
@@ -649,12 +833,13 @@ function getAllChinchorros(callback) {
   `, callback);
 }
 
-function createChinchorro(codigo, zona, precio_diario, callback) {
+function createChinchorro(codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
+  const est = estado || 'Disponible';
   db.run(
-    "INSERT INTO chinchorros (codigo, zona, estado, precio_diario) VALUES (?, ?, 'Disponible', ?)",
-    [codigo, zona || null, precio],
+    "INSERT INTO chinchorros (codigo, numero, nombre, tipo, piso, estado, precio_diario) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [codigo, numero || null, nombre || null, tipo || 'Sencilla', piso || null, est, precio],
     function(err) {
       if (err) {
         callback(err);
@@ -662,8 +847,11 @@ function createChinchorro(codigo, zona, precio_diario, callback) {
         callback(null, {
           id: this.lastID,
           codigo,
-          zona: zona || null,
-          estado: 'Disponible',
+          numero: numero || null,
+          nombre: nombre || null,
+          tipo: tipo || 'Sencilla',
+          piso: piso || null,
+          estado: est,
           precio_diario: precio
         });
       }
@@ -671,12 +859,17 @@ function createChinchorro(codigo, zona, precio_diario, callback) {
   );
 }
 
-function updateChinchorroDatos(id, codigo, zona, precio_diario, callback) {
+function updateChinchorroDatos(id, codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
+  const cod = codigo != null ? String(codigo).trim() : '';
+  const codigoSeguro = cod || `CH-${id}`;
+  const numRaw = numero != null ? String(numero).trim() : '';
+  const nomRaw = nombre != null ? String(nombre).trim() : '';
+  const numeroSeguro = numRaw || codigoSeguro || nomRaw || `CH-${id}`;
   db.run(
-    'UPDATE chinchorros SET codigo = ?, zona = ?, precio_diario = ? WHERE id = ?',
-    [codigo, zona || null, precio, id],
+    'UPDATE chinchorros SET codigo = ?, numero = ?, nombre = ?, tipo = ?, piso = ?, estado = ?, precio_diario = ? WHERE id = ?',
+    [codigoSeguro, numeroSeguro, nombre || null, tipo || 'Sencilla', piso || null, estado || 'Disponible', precio, id],
     callback
   );
 }
@@ -685,12 +878,34 @@ function deleteChinchorro(id, callback) {
   db.run("DELETE FROM chinchorros WHERE id = ?", [id], callback);
 }
 
+function getChinchorroById(id, callback) {
+  db.get('SELECT * FROM chinchorros WHERE id = ?', [id], callback);
+}
+
+function chinchorroTieneReservaActivaHoy(chinchorro_id, callback) {
+  db.get(
+    `
+      SELECT COUNT(*) as count FROM reservas_chinchorros
+      WHERE chinchorro_id = ?
+      AND estado = 'Activa'
+      AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
+    `,
+    [chinchorro_id],
+    (err, row) => {
+      if (err) return callback(err);
+      callback(null, row && Number(row.count) > 0);
+    }
+  );
+}
+
 function getAllReservasChinchorros(callback) {
   db.all(
     `
     SELECT r.*,
            ch.codigo as chinchorro_codigo,
-           ch.precio_diario as chinchorro_precio_diario,
+           ch.nombre as chinchorro_nombre,
+           COALESCE(NULLIF(r.tarifa_dia, 0), ch.precio_diario, 0) as chinchorro_precio_diario,
+           r.tarifa_dia as reserva_tarifa_dia,
            hu.nombre as huesped_nombre,
            hu.apellido as huesped_apellido,
            hu.email as huesped_email
@@ -703,7 +918,13 @@ function getAllReservasChinchorros(callback) {
   );
 }
 
-function createReservaChinchorro(chinchorro_id, huesped_id, fecha_ingreso, fecha_salida, callback) {
+function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, callback) {
+  getChinchorroById(chinchorro_id, (errCh, ch) => {
+    if (errCh) return callback(errCh);
+    if (!ch) return callback(new Error('Chinchorro no encontrado'));
+    const msgEst = mensajeInventarioNoReservable(ch.estado, 'chinchorro');
+    if (msgEst) return callback(new Error(msgEst));
+
   db.all(`
     SELECT * FROM reservas_chinchorros
     WHERE chinchorro_id = ?
@@ -716,26 +937,40 @@ function createReservaChinchorro(chinchorro_id, huesped_id, fecha_ingreso, fecha
     } else if (rows.length > 0) {
       callback(new Error('El chinchorro ya está reservado en esas fechas'));
     } else {
+      const tarifaRaw = tarifa_dia == null || tarifa_dia === '' ? 0 : Number(tarifa_dia);
+      const tarifaSegura = Number.isFinite(tarifaRaw) && tarifaRaw >= 0 ? tarifaRaw : 0;
       db.run(
-        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, fecha_ingreso, fecha_salida) VALUES (?, ?, ?, ?)",
-        [chinchorro_id, huesped_id, fecha_ingreso, fecha_salida],
+        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura],
         function(err) {
           if (err) {
             callback(err);
           } else {
-            updateChinchorroEstado(chinchorro_id, 'Ocupada', () => {});
-            callback(null, {
-              id: this.lastID,
-              chinchorro_id,
-              huesped_id,
-              fecha_ingreso,
-              fecha_salida,
-              estado: 'Activa'
+            sincronizarEstadoChinchorroConReservas(chinchorro_id, (syncErr) => {
+              if (syncErr) {
+                callback(syncErr);
+                return;
+              }
+              callback(null, {
+                id: this.lastID,
+                chinchorro_id,
+                huesped_id,
+                adultos,
+                ninos,
+                tipo_requerido,
+                metodo_pago,
+                observaciones,
+                fecha_ingreso,
+                fecha_salida,
+                tarifa_dia: tarifaSegura,
+                estado: 'Activa'
+              });
             });
           }
         }
       );
     }
+  });
   });
 }
 
@@ -744,26 +979,35 @@ function getReservaChinchorroById(id, callback) {
 }
 
 function sincronizarEstadoChinchorroConReservas(chinchorro_id, callback) {
-  db.all(
-    `
-      SELECT COUNT(*) as count FROM reservas_chinchorros
-      WHERE chinchorro_id = ?
-      AND estado = 'Activa'
-      AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-    `,
-    [chinchorro_id],
-    (err, rows) => {
-      if (err) {
-        callback(err);
-        return;
+  getChinchorroById(chinchorro_id, (e0, ch) => {
+    if (e0) return callback(e0);
+    if (!ch) return callback(new Error('Chinchorro no encontrado'));
+    db.get(
+      `
+        SELECT
+          SUM(CASE WHEN DATE('now') BETWEEN fecha_ingreso AND fecha_salida THEN 1 ELSE 0 END) as cnt_hoy,
+          SUM(CASE WHEN DATE('now') < fecha_ingreso THEN 1 ELSE 0 END) as cnt_futuro
+        FROM reservas_chinchorros
+        WHERE chinchorro_id = ? AND estado = 'Activa'
+      `,
+      [chinchorro_id],
+      (err, agg) => {
+        if (err) return callback(err);
+        const nuevo = resolverEstadoInventarioDesdeReservas(
+          ch.estado,
+          agg && agg.cnt_hoy,
+          agg && agg.cnt_futuro
+        );
+        if (nuevo === ch.estado) return callback(null);
+        updateChinchorroEstado(chinchorro_id, nuevo, callback);
       }
-      const ocupada = rows && rows[0] && rows[0].count > 0;
-      updateChinchorroEstado(chinchorro_id, ocupada ? 'Ocupada' : 'Disponible', (e2) => callback(e2));
-    }
-  );
+    );
+  });
 }
 
-function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, fecha_ingreso, fecha_salida, callback) {
+function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, callback) {
+  const tarifaRaw = tarifa_dia == null || tarifa_dia === '' ? 0 : Number(tarifa_dia);
+  const tarifaSegura = Number.isFinite(tarifaRaw) && tarifaRaw >= 0 ? tarifaRaw : 0;
   getReservaChinchorroById(id, (err, curr) => {
     if (err) {
       return callback(err);
@@ -774,9 +1018,10 @@ function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, fecha_ingre
     const chAnt = curr.chinchorro_id;
 
     const aplicarActualizacion = () => {
+      const ejecutarUpdate = () => {
       db.run(
-        'UPDATE reservas_chinchorros SET chinchorro_id = ?, huesped_id = ?, fecha_ingreso = ?, fecha_salida = ? WHERE id = ?',
-        [chinchorro_id, huesped_id, fecha_ingreso, fecha_salida, id],
+        'UPDATE reservas_chinchorros SET chinchorro_id = ?, huesped_id = ?, adultos = ?, ninos = ?, tipo_requerido = ?, metodo_pago = ?, observaciones = ?, fecha_ingreso = ?, fecha_salida = ?, tarifa_dia = ? WHERE id = ?',
+        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, id],
         (runErr) => {
           if (runErr) {
             callback(runErr);
@@ -791,6 +1036,18 @@ function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, fecha_ingre
           });
         }
       );
+      };
+
+      if (Number(chAnt) === Number(chinchorro_id)) {
+        return ejecutarUpdate();
+      }
+      getChinchorroById(chinchorro_id, (errCh, ch) => {
+        if (errCh) return callback(errCh);
+        if (!ch) return callback(new Error('Chinchorro no encontrado'));
+        const msgEst = mensajeInventarioNoReservable(ch.estado, 'chinchorro');
+        if (msgEst) return callback(new Error(msgEst));
+        ejecutarUpdate();
+      });
     };
 
     if (String(curr.estado) === 'Activa') {
@@ -821,28 +1078,15 @@ function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, fecha_ingre
 }
 
 function updateReservaChinchorroEstado(id, estado, callback) {
-  db.run("UPDATE reservas_chinchorros SET estado = ? WHERE id = ?", [estado, id], function(err) {
-    if (!err && (estado === 'Cancelada' || estado === 'Finalizada')) {
-      db.get("SELECT chinchorro_id FROM reservas_chinchorros WHERE id = ?", [id], (err, row) => {
-        if (!err && row) {
-          db.all(
-            `
-            SELECT COUNT(*) as count FROM reservas_chinchorros
-            WHERE chinchorro_id = ?
-            AND estado = 'Activa'
-            AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-          `,
-            [row.chinchorro_id],
-            (err2, rows) => {
-              if (!err2 && rows[0].count === 0) {
-                updateChinchorroEstado(row.chinchorro_id, 'Disponible', () => {});
-              }
-            }
-          );
-        }
-      });
+  db.run('UPDATE reservas_chinchorros SET estado = ? WHERE id = ?', [estado, id], function(err) {
+    if (err) {
+      return callback(err);
     }
-    callback(err);
+    db.get('SELECT chinchorro_id FROM reservas_chinchorros WHERE id = ?', [id], (err2, row) => {
+      if (err2) return callback(err2);
+      if (!row) return callback(null);
+      sincronizarEstadoChinchorroConReservas(row.chinchorro_id, (syncErr) => callback(syncErr || null));
+    });
   });
 }
 
@@ -853,20 +1097,43 @@ function deleteReservaChinchorro(id, callback) {
     } else {
       db.run("DELETE FROM reservas_chinchorros WHERE id = ?", [id], function(err) {
         if (!err && row) {
-          db.all(`
-            SELECT COUNT(*) as count FROM reservas_chinchorros
-            WHERE chinchorro_id = ?
-            AND estado = 'Activa'
-            AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
-          `, [row.chinchorro_id], (err, rows) => {
-            if (!err && rows[0].count === 0) {
-              updateChinchorroEstado(row.chinchorro_id, 'Disponible', () => {});
-            }
-          });
+          sincronizarEstadoChinchorroConReservas(row.chinchorro_id, () => {});
         }
         callback(err);
       });
     }
+  });
+}
+
+/** Recalcula estado de todas las habitaciones y chinchorros según reservas activas. */
+function sincronizarTodosEstadosInventario(callback) {
+  db.all('SELECT id FROM habitaciones', [], (e1, habs) => {
+    if (e1) return callback(e1);
+    const listaH = habs || [];
+    let i = 0;
+    const syncHab = () => {
+      if (i >= listaH.length) {
+        db.all('SELECT id FROM chinchorros', [], (e2, chs) => {
+          if (e2) return callback(e2);
+          const listaC = chs || [];
+          let j = 0;
+          const syncCh = () => {
+            if (j >= listaC.length) return callback(null);
+            sincronizarEstadoChinchorroConReservas(listaC[j].id, () => {
+              j += 1;
+              syncCh();
+            });
+          };
+          syncCh();
+        });
+        return;
+      }
+      sincronizarEstadoHabitacionConReservas(listaH[i].id, () => {
+        i += 1;
+        syncHab();
+      });
+    };
+    syncHab();
   });
 }
 
@@ -1015,6 +1282,7 @@ module.exports = {
   createHabitacion,
   updateHabitacionDatos,
   updateHabitacionEstado,
+  habitacionTieneReservaActivaHoy,
   deleteHabitacion,
   getCamasByHabitacion,
   createCama,
@@ -1029,6 +1297,8 @@ module.exports = {
   updateReservaDatos,
   createReserva,
   updateReservaEstado,
+  sincronizarEstadoHabitacionConReservas,
+  sincronizarTodosEstadosInventario,
   deleteReserva,
   getUserByUsername,
   usernameExistsIgnoreCase,
@@ -1044,6 +1314,8 @@ module.exports = {
   countAdminsActiveExcept,
   verifyPassword,
   getAllChinchorros,
+  getChinchorroById,
+  chinchorroTieneReservaActivaHoy,
   createChinchorro,
   updateChinchorroDatos,
   updateChinchorroEstado,

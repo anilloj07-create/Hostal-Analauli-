@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=9">
+    <link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
     <div class="container">
@@ -42,7 +42,7 @@
                     type="search"
                     id="buscarHabitaciones"
                     class="input-busqueda-modulo"
-                    placeholder="Buscar habitación por número, tipo o estado..."
+                    placeholder="Buscar habitación por nombre, tipo, piso o estado..."
                     oninput="actualizarFiltroModulo('habitaciones', this.value)">
             </div>
 
@@ -54,9 +54,9 @@
                     <table class="data-table tabla-inventario-recursos">
                         <thead>
                             <tr>
-                                <th>Habitación</th>
+                                <th>Nombre</th>
                                 <th>Tipo</th>
-                                <th>Tarifa / noche</th>
+                                <th>Piso / nivel</th>
                                 <th>Camas</th>
                                 <th>Estado</th>
                                 <th>Acciones</th>
@@ -92,6 +92,7 @@
                             <th>Apellido</th>
                             <th>Email</th>
                             <th>Teléfono</th>
+                            <th>Tipo documento</th>
                             <th>Documento</th>
                             <th>Acciones</th>
                         </tr>
@@ -129,10 +130,15 @@
                             <th>ID</th>
                             <th>Habitación</th>
                             <th>Huésped</th>
+                            <th>Adultos / Niños</th>
+                            <th>Tipo hab. requerida</th>
+                            <th>Método de pago</th>
                             <th>Fecha Ingreso</th>
                             <th>Fecha Salida</th>
                             <th>Estado</th>
+                            <th>Tarifa / noche</th>
                             <th>Valor ref.</th>
+                            <th>Observaciones</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -150,10 +156,15 @@
                             <th>ID</th>
                             <th>Chinchorro</th>
                             <th>Huésped</th>
+                            <th>Adultos / Niños</th>
+                            <th>Tipo requerido</th>
+                            <th>Método de pago</th>
                             <th>Fecha inicio</th>
                             <th>Fecha fin</th>
                             <th>Estado</th>
+                            <th>Tarifa / día</th>
                             <th>Valor ref.</th>
+                            <th>Observaciones</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -175,7 +186,7 @@
                     type="search"
                     id="buscarChinchorros"
                     class="input-busqueda-modulo"
-                    placeholder="Buscar chinchorro por código, zona o estado..."
+                    placeholder="Buscar chinchorro por nombre, tipo, piso o estado..."
                     oninput="actualizarFiltroModulo('chinchorros', this.value)">
             </div>
             <p class="section-intro">Inventario y estado de los chinchorros disponibles para alquiler.</p>
@@ -187,9 +198,9 @@
                     <table class="data-table tabla-inventario-recursos">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Zona</th>
-                                <th>Tarifa / día</th>
+                                <th>Nombre</th>
+                                <th>Tipo</th>
+                                <th>Piso / nivel</th>
                                 <th>Reservas activas (hoy)</th>
                                 <th>Estado</th>
                                 <th>Acciones</th>
@@ -208,21 +219,34 @@
                 <button type="button" class="btn-secondary" onclick="actualizarIndicadoresOcupacion()">🔄 Actualizar indicadores</button>
             </div>
             <p class="section-intro">
-                Resumen de ocupación y <strong>estado financiero</strong> calculado desde las tarifas de reservas de habitaciones y chinchorros
-                (noches o días × tarifa diaria).
+                Panel de control con ocupación, ingresos del mes, últimas reservas y estado financiero según las tarifas registradas.
             </p>
 
-            <h3 class="subsection-title">💰 Estado financiero</h3>
-            <div id="indicadoresFinancieros" class="fin-estado-panel" aria-live="polite"></div>
+            <h3 class="subsection-title">📊 Indicadores de ocupación</h3>
+            <div id="dashboardKpiGrid" class="dash-kpi-grid" aria-live="polite"></div>
+
+            <h3 class="subsection-title">🏨 Ingresos por habitación (mes actual)</h3>
+            <div id="ingresosPorHabitacionMes" class="dash-ingresos-grid" aria-live="polite"></div>
+
+            <h3 class="subsection-title">🛋️ Ingresos por chinchorros (mes actual)</h3>
+            <div id="ingresosPorChinchorroMes" class="dash-ingresos-grid" aria-live="polite"></div>
+
+            <div class="dash-bottom-row">
+                <div class="dash-bottom-col">
+                    <h3 class="subsection-title">📋 Últimas reservas</h3>
+                    <div id="ultimasReservasDash" class="dash-ultimas-reservas" aria-live="polite"></div>
+                </div>
+                <div class="dash-bottom-col">
+                    <h3 class="subsection-title">💰 Estado financiero</h3>
+                    <div id="indicadoresFinancieros" class="fin-estado-panel fin-estado-panel--compact" aria-live="polite"></div>
+                </div>
+            </div>
 
             <h3 class="subsection-title">Resumen rápido (barras)</h3>
             <div class="dual-ocupacion" aria-label="Ocupación habitaciones y chinchorros">
                 <div id="dualPanelHabitaciones" class="dual-ocupacion-slot"></div>
                 <div id="dualPanelChinchorros" class="dual-ocupacion-slot"></div>
             </div>
-
-            <h3 class="subsection-title">Indicadores porcentuales</h3>
-            <div id="indicadoresOcupacionGrid" class="indicadores-grid" aria-live="polite"></div>
         </section>
 
         <!-- Calendario de disponibilidad -->
@@ -231,10 +255,11 @@
                 <h2>Calendario de disponibilidad</h2>
                 <button type="button" class="btn-secondary" onclick="actualizarCalendarioDisponibilidad()">🔄 Actualizar</button>
             </div>
-            <p class="section-intro">Vista mensual según <strong>reservas activas</strong>: cada día en rango ingreso–salida (fechas inclusive, como en la base de datos) aparece en rojo. Verde = sin reserva activa ese día.</p>
+            <p class="section-intro">Vista mensual según <strong>reservas activas</strong>. <strong>Clic en celda verde (+)</strong> para reservar. Gris (—) = en limpieza o fuera de servicio (no reservable). Rojo = ocupado (clic para ver la reserva).</p>
             <div class="cal-leyenda" aria-hidden="true">
-                <span class="cal-ley-item"><span class="cal-swatch cal-libre"></span> Disponible</span>
-                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-libre"></span> Disponible — clic para reservar</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado — clic para consultar</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-no-reservable"></span> Limpieza / fuera de servicio</span>
             </div>
             <div class="cal-nav">
                 <button type="button" class="btn-secondary" onclick="calendarioMesAnterior()">← Mes anterior</button>
@@ -420,19 +445,37 @@
             <span class="close" onclick="cerrarModal('modalHabitacion')">&times;</span>
             <h2 id="tituloModalHabitacion">Nueva habitación</h2>
             <form id="formHabitacion" onsubmit="guardarHabitacion(event)">
+                <p id="mensajeAyudaModalHabitacion" class="modal-hint" hidden>
+                    Puede cambiar el <strong>estado</strong> y cualquier otro dato. Pulse <strong>Guardar cambios</strong> para aplicar.
+                </p>
                 <input type="hidden" id="idHabitacionEdicion" value="">
                 <div class="form-group">
-                    <label>Número de Habitación *</label>
-                    <input type="text" id="numeroHabitacion" required>
+                    <label>Nombre de la habitación *</label>
+                    <input type="text" id="nombreHabitacion" required placeholder="Ej: Vista al mar, Habitación 101">
                 </div>
                 <div class="form-group">
-                    <label>Tipo</label>
-                    <input type="text" id="tipoHabitacion" placeholder="Ej: Estándar, Suite, Deluxe">
+                    <label>Tipo de habitación</label>
+                    <select id="tipoHabitacion">
+                        <option value="Sencilla">Sencilla</option>
+                        <option value="Doble">Doble</option>
+                        <option value="Suite">Suite</option>
+                        <option value="Familiar">Familiar</option>
+                        <option value="Estándar">Estándar</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label>Tarifa por noche</label>
-                    <input type="number" id="precioHabitacion" min="0" step="0.01" value="0" placeholder="0.00">
-                    <small class="form-hint">Valor de referencia por cada noche de estadía.</small>
+                    <label>Piso o nivel</label>
+                    <input type="text" id="pisoHabitacion" placeholder="Ej: 1, 2, Penthouse">
+                </div>
+                <div class="form-group">
+                    <label>Estado</label>
+                    <select id="estadoHabitacion">
+                        <option value="Disponible">Disponible</option>
+                        <option value="Ocupada">Ocupada</option>
+                        <option value="Reservada">Reservada</option>
+                        <option value="En limpieza">En limpieza</option>
+                        <option value="Fuera de servicio">Fuera de servicio</option>
+                    </select>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary" id="btnSubmitHabitacion">Guardar</button>
@@ -448,19 +491,34 @@
             <span class="close" onclick="cerrarModal('modalChinchorro')">&times;</span>
             <h2 id="tituloModalChinchorro">Nuevo chinchorro</h2>
             <form id="formChinchorro" onsubmit="guardarChinchorro(event)">
+                <p id="mensajeAyudaModalChinchorro" class="modal-hint" hidden>
+                    Puede cambiar el <strong>estado</strong> y cualquier otro dato. Pulse <strong>Guardar cambios</strong> para aplicar.
+                </p>
                 <input type="hidden" id="idChinchorroEdicion" value="">
                 <div class="form-group">
-                    <label>Código / número *</label>
-                    <input type="text" id="codigoChinchorro" required placeholder="Ej: CH-01">
+                    <label>Nombre del chinchorro *</label>
+                    <input type="text" id="nombreChinchorro" required placeholder="Ej: Carpa playa norte">
                 </div>
                 <div class="form-group">
-                    <label>Zona o ubicación</label>
-                    <input type="text" id="zonaChinchorro" placeholder="Ej: Playa, piscina">
+                    <label>Tipo de chinchorro</label>
+                    <select id="tipoChinchorro">
+                        <option value="Sencilla">Sencilla</option>
+                        <option value="Doble">Doble</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label>Tarifa por día</label>
-                    <input type="number" id="precioChinchorro" min="0" step="0.01" value="0" placeholder="0.00">
-                    <small class="form-hint">Valor de referencia por cada día de alquiler.</small>
+                    <label>Piso o nivel</label>
+                    <input type="text" id="pisoChinchorro" placeholder="Ej: Playa nivel 1">
+                </div>
+                <div class="form-group">
+                    <label>Estado</label>
+                    <select id="estadoChinchorro">
+                        <option value="Disponible">Disponible</option>
+                        <option value="Ocupada">Ocupada</option>
+                        <option value="Reservada">Reservada</option>
+                        <option value="En limpieza">En limpieza</option>
+                        <option value="Fuera de servicio">Fuera de servicio</option>
+                    </select>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary" id="btnSubmitChinchorro">Guardar</button>
@@ -521,6 +579,18 @@
                     <input type="tel" id="telefonoHuesped">
                 </div>
                 <div class="form-group">
+                    <label>Tipo de documento</label>
+                    <select id="tipoDocumentoHuesped">
+                        <option value="Cédula">Cédula</option>
+                        <option value="Pasaporte">Pasaporte</option>
+                        <option value="Tarjeta de identidad">Tarjeta de identidad</option>
+                        <option value="Registro civil">Registro civil</option>
+                        <option value="Cédula de Extranjería">Cédula de Extranjería</option>
+                        <option value="Permiso Especial">Permiso Especial</option>
+                        <option value="Carnet Diplomático">Carnet Diplomático</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Documento</label>
                     <input type="text" id="documentoHuesped">
                 </div>
@@ -567,10 +637,53 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Huésped *</label>
-                    <select id="huespedReserva" required>
-                        <option value="">Seleccionar huésped</option>
+                    <label for="textoHuespedReserva">Huésped *</label>
+                    <div class="combobox-huesped-wrap">
+                        <input
+                            type="text"
+                            id="textoHuespedReserva"
+                            class="combobox-huesped-input"
+                            placeholder="Buscar por nombre, apellido o documento..."
+                            autocomplete="off"
+                            aria-autocomplete="list"
+                            aria-controls="listaHuespedReserva"
+                            role="combobox"
+                            aria-expanded="false">
+                        <input type="hidden" id="huespedReserva" required>
+                        <ul id="listaHuespedReserva" class="combobox-huesped-lista" role="listbox" hidden></ul>
+                    </div>
+                    <small class="form-hint">Escriba nombre, apellido o documento (mín. 2 letras) y elija de la lista.</small>
+                </div>
+                <div class="form-group">
+                    <label>Adultos *</label>
+                    <input type="number" id="reservaAdultos" min="1" step="1" value="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Niños</label>
+                    <input type="number" id="reservaNinos" min="0" step="1" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de habitación requerida</label>
+                    <select id="tipoHabitacionRequerida">
+                        <option value="">Seleccionar (opcional)</option>
+                        <option value="Estándar">Estándar</option>
+                        <option value="Suite">Suite</option>
+                        <option value="Doble">Doble</option>
+                        <option value="Familiar">Familiar</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Método de pago *</label>
+                    <select id="metodoPagoReserva" required>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta">Tarjeta</option>
+                        <option value="Transferencia">Transferencia</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por noche *</label>
+                    <input type="number" id="tarifaNocheReserva" min="0" step="0.01" value="0" required placeholder="0.00">
+                    <small class="form-hint">Valor cobrado por cada noche de esta reserva (indicadores y valor ref.).</small>
                 </div>
                 <div class="form-group">
                     <label>Fecha de Ingreso *</label>
@@ -579,6 +692,10 @@
                 <div class="form-group">
                     <label>Fecha de Salida *</label>
                     <input type="date" id="fechaSalida" required>
+                </div>
+                <div class="form-group">
+                    <label>Observaciones</label>
+                    <textarea id="observacionesReserva" rows="3" placeholder="Notas adicionales de la reserva"></textarea>
                 </div>
                 <p id="mensajeAyudaModalReserva" class="modal-hint" hidden>
                     Cambie los datos que necesite y pulse <strong>Guardar cambios</strong> para aplicarlos.
@@ -605,10 +722,47 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Huésped *</label>
-                    <select id="huespedReservaChin" required>
-                        <option value="">Seleccionar huésped</option>
+                    <label for="textoHuespedReservaChin">Huésped *</label>
+                    <div class="combobox-huesped-wrap">
+                        <input
+                            type="text"
+                            id="textoHuespedReservaChin"
+                            class="combobox-huesped-input"
+                            placeholder="Buscar por nombre, apellido o documento..."
+                            autocomplete="off"
+                            aria-autocomplete="list"
+                            aria-controls="listaHuespedReservaChin"
+                            role="combobox"
+                            aria-expanded="false">
+                        <input type="hidden" id="huespedReservaChin" required>
+                        <ul id="listaHuespedReservaChin" class="combobox-huesped-lista" role="listbox" hidden></ul>
+                    </div>
+                    <small class="form-hint">Escriba nombre, apellido o documento (mín. 2 letras) y elija de la lista.</small>
+                </div>
+                <div class="form-group">
+                    <label>Adultos *</label>
+                    <input type="number" id="reservaChinAdultos" min="1" step="1" value="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Niños</label>
+                    <input type="number" id="reservaChinNinos" min="0" step="1" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Tipo requerido</label>
+                    <input type="text" id="tipoRequeridoChin" placeholder="Ej: Familiar, playa, zona sombra">
+                </div>
+                <div class="form-group">
+                    <label>Método de pago *</label>
+                    <select id="metodoPagoReservaChin" required>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta">Tarjeta</option>
+                        <option value="Transferencia">Transferencia</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por día *</label>
+                    <input type="number" id="tarifaDiaReservaChin" min="0" step="0.01" value="0" required placeholder="0.00">
+                    <small class="form-hint">Valor cobrado por cada día de esta reserva (indicadores y valor ref.).</small>
                 </div>
                 <div class="form-group">
                     <label>Fecha de inicio *</label>
@@ -617,6 +771,10 @@
                 <div class="form-group">
                     <label>Fecha de fin *</label>
                     <input type="date" id="fechaSalidaChin" required>
+                </div>
+                <div class="form-group">
+                    <label>Observaciones</label>
+                    <textarea id="observacionesReservaChin" rows="3" placeholder="Notas adicionales de la reserva"></textarea>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary">Reservar</button>
@@ -758,6 +916,6 @@
     </div>
 
     <script src="theme-apply.js?v=5"></script>
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=28"></script>
 </body>
 </html>

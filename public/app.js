@@ -79,12 +79,51 @@ function actualizarFiltroModulo(modulo, valor) {
     }
 }
 
+function etiquetaHabitacion(hab) {
+    if (!hab) return 'Habitación';
+    const nombre = hab.nombre != null ? String(hab.nombre).trim() : '';
+    if (nombre) return nombre;
+    if (hab.numero != null && String(hab.numero).trim()) return String(hab.numero).trim();
+    if (hab.codigo != null && String(hab.codigo).trim()) return String(hab.codigo).trim();
+    return `Habitación ${hab.id}`;
+}
+
+function etiquetaHabitacionReserva(r) {
+    if (!r) return 'Habitación';
+    const nombre = r.habitacion_nombre != null ? String(r.habitacion_nombre).trim() : '';
+    if (nombre) return nombre;
+    if (r.habitacion_numero != null && String(r.habitacion_numero).trim()) {
+        return String(r.habitacion_numero).trim();
+    }
+    return r.habitacion_id != null ? `Habitación #${r.habitacion_id}` : 'Habitación';
+}
+
+function etiquetaChinchorro(c) {
+    if (!c) return 'Chinchorro';
+    const nombre = c.nombre != null ? String(c.nombre).trim() : '';
+    if (nombre) return nombre;
+    if (c.numero != null && String(c.numero).trim()) return String(c.numero).trim();
+    if (c.codigo != null && String(c.codigo).trim()) return String(c.codigo).trim();
+    return `Chinchorro ${c.id}`;
+}
+
+function etiquetaChinchorroReserva(r) {
+    if (!r) return 'Chinchorro';
+    const nombre = r.chinchorro_nombre != null ? String(r.chinchorro_nombre).trim() : '';
+    if (nombre) return nombre;
+    if (r.chinchorro_codigo != null && String(r.chinchorro_codigo).trim()) {
+        return String(r.chinchorro_codigo).trim();
+    }
+    return r.chinchorro_id != null ? `Chinchorro #${r.chinchorro_id}` : 'Chinchorro';
+}
+
 function habitacionesFiltradas() {
     const t = filtrosBusqueda.habitaciones;
     if (!t) return habitaciones;
     return habitaciones.filter((h) =>
-        coincideBusqueda(h.numero, t) ||
+        coincideBusqueda(etiquetaHabitacion(h), t) ||
         coincideBusqueda(h.tipo, t) ||
+        coincideBusqueda(h.piso, t) ||
         coincideBusqueda(h.estado, t)
     );
 }
@@ -92,11 +131,220 @@ function habitacionesFiltradas() {
 function huespedesFiltrados() {
     const t = filtrosBusqueda.huespedes;
     if (!t) return huespedes;
-    return huespedes.filter((h) =>
-        coincideBusqueda(h.nombre, t) ||
-        coincideBusqueda(h.apellido, t) ||
-        coincideBusqueda(h.documento, t)
+    return huespedes.filter((h) => huespedCoincideTextoBusqueda(h, t));
+}
+
+function etiquetaHuesped(h) {
+    if (!h) return '';
+    const nom = `${h.nombre || ''} ${h.apellido || ''}`.trim();
+    const doc = h.documento != null ? String(h.documento).trim() : '';
+    const tipo = h.tipo_documento != null ? String(h.tipo_documento).trim() : '';
+    if (doc) {
+        const pref = tipo ? `${tipo}: ` : 'Doc: ';
+        return nom ? `${nom} · ${pref}${doc}` : `${pref}${doc}`;
+    }
+    return nom || `Huésped #${h.id}`;
+}
+
+/** Coincide si el término ya viene normalizado (sin tildes, minúsculas). */
+function huespedCoincideTextoBusqueda(h, terminoNormalizado) {
+    if (!terminoNormalizado) return false;
+    const partes = terminoNormalizado.split(/\s+/).filter(Boolean);
+    if (partes.length === 0) return false;
+    const blob = textoBusquedaNormalizado(
+        `${h.nombre || ''} ${h.apellido || ''} ${h.documento || ''} ${h.tipo_documento || ''} ${h.email || ''} ${h.telefono || ''}`
     );
+    return partes.every((p) => blob.includes(p));
+}
+
+const MIN_CHARS_BUSQUEDA_HUESPED = 2;
+
+function mostrarMensajeComboboxHuesped(inst, mensaje) {
+    const lista = inst.listaEl;
+    if (!lista) return;
+    lista.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'combobox-sin-resultados';
+    li.textContent = mensaje;
+    lista.appendChild(li);
+    lista.hidden = false;
+    if (inst.textoEl) {
+        inst.textoEl.setAttribute('aria-expanded', 'true');
+    }
+}
+
+const comboboxHuespedInstancias = new Map();
+
+function obtenerComboboxHuesped(hiddenId) {
+    return comboboxHuespedInstancias.get(hiddenId);
+}
+
+function renderListaComboboxHuesped(inst, filtro) {
+    const lista = inst.listaEl;
+    if (!lista) return;
+
+    if (!Array.isArray(huespedes) || huespedes.length === 0) {
+        mostrarMensajeComboboxHuesped(
+            inst,
+            'No hay huéspedes registrados. Créelos en la pestaña Huéspedes.'
+        );
+        return;
+    }
+
+    const t = textoBusquedaNormalizado(filtro);
+    if (!t || t.length < MIN_CHARS_BUSQUEDA_HUESPED) {
+        mostrarMensajeComboboxHuesped(
+            inst,
+            `Escriba al menos ${MIN_CHARS_BUSQUEDA_HUESPED} letras (nombre, apellido o documento).`
+        );
+        return;
+    }
+
+    const coincidencias = huespedes.filter((h) => huespedCoincideTextoBusqueda(h, t));
+    const max = 40;
+    const mostrar = coincidencias.slice(0, max);
+    lista.innerHTML = '';
+    if (mostrar.length === 0) {
+        mostrarMensajeComboboxHuesped(inst, 'Sin coincidencias. Pruebe con otro nombre o documento.');
+        return;
+    }
+    mostrar.forEach((h) => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.dataset.id = String(h.id);
+        li.textContent = etiquetaHuesped(h);
+        li.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            seleccionarComboboxHuesped(inst, h.id, etiquetaHuesped(h));
+        });
+        lista.appendChild(li);
+    });
+    if (coincidencias.length > max) {
+        const li = document.createElement('li');
+        li.className = 'combobox-sin-resultados';
+        li.textContent = `… y ${coincidencias.length - max} más. Refine la búsqueda.`;
+        lista.appendChild(li);
+    }
+    lista.hidden = false;
+    if (inst.textoEl) {
+        inst.textoEl.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function ocultarListaComboboxHuesped(inst) {
+    if (!inst || !inst.listaEl) return;
+    inst.listaEl.hidden = true;
+    if (inst.textoEl) {
+        inst.textoEl.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function seleccionarComboboxHuesped(inst, id, etiqueta) {
+    if (!inst) return;
+    if (inst.hiddenEl) {
+        inst.hiddenEl.value = id != null ? String(id) : '';
+    }
+    if (inst.textoEl) {
+        inst.textoEl.value = etiqueta || '';
+    }
+    ocultarListaComboboxHuesped(inst);
+}
+
+function limpiarComboboxHuesped(hiddenId) {
+    const inst = obtenerComboboxHuesped(hiddenId);
+    if (!inst) return;
+    if (inst.hiddenEl) inst.hiddenEl.value = '';
+    if (inst.textoEl) inst.textoEl.value = '';
+    ocultarListaComboboxHuesped(inst);
+}
+
+function establecerComboboxHuesped(hiddenId, huespedId, textoMostrar) {
+    const inst = obtenerComboboxHuesped(hiddenId);
+    if (!inst) return;
+    const h = huespedes.find((x) => Number(x.id) === Number(huespedId));
+    const etiqueta = textoMostrar && String(textoMostrar).trim() ? textoMostrar.trim() : h ? etiquetaHuesped(h) : '';
+    seleccionarComboboxHuesped(inst, huespedId, etiqueta);
+}
+
+function initComboboxHuesped(config) {
+    const textoEl = document.getElementById(config.textoId);
+    const hiddenEl = document.getElementById(config.hiddenId);
+    const listaEl = document.getElementById(config.listaId);
+    if (!textoEl || !hiddenEl || !listaEl) return;
+
+    const inst = { textoId: config.textoId, hiddenId: config.hiddenId, listaId: config.listaId, textoEl, hiddenEl, listaEl };
+    comboboxHuespedInstancias.set(config.hiddenId, inst);
+
+    textoEl.addEventListener('input', () => {
+        hiddenEl.value = '';
+        renderListaComboboxHuesped(inst, textoEl.value);
+    });
+    textoEl.addEventListener('focus', () => {
+        renderListaComboboxHuesped(inst, textoEl.value);
+    });
+    textoEl.addEventListener('blur', () => {
+        window.setTimeout(() => {
+            if (!inst.listaEl.matches(':hover') && document.activeElement !== textoEl) {
+                ocultarListaComboboxHuesped(inst);
+                const id = hiddenEl.value.trim();
+                if (!id && textoEl.value.trim()) {
+                    const t = textoBusquedaNormalizado(textoEl.value);
+                    const exactos = huespedes.filter(
+                        (h) => textoBusquedaNormalizado(etiquetaHuesped(h)) === t
+                    );
+                    if (exactos.length === 1) {
+                        seleccionarComboboxHuesped(inst, exactos[0].id, etiquetaHuesped(exactos[0]));
+                    } else if (t.length >= MIN_CHARS_BUSQUEDA_HUESPED) {
+                        const parciales = huespedes.filter((h) => huespedCoincideTextoBusqueda(h, t));
+                        if (parciales.length === 1) {
+                            seleccionarComboboxHuesped(inst, parciales[0].id, etiquetaHuesped(parciales[0]));
+                        }
+                    }
+                }
+            }
+        }, 180);
+    });
+    textoEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+            ocultarListaComboboxHuesped(inst);
+        }
+    });
+}
+
+async function asegurarHuespedesParaReserva() {
+    if (huespedes.length > 0) return;
+    try {
+        const response = await fetchWithAuth(`${API_URL}/huespedes`);
+        if (response.ok) {
+            huespedes = await response.json();
+        }
+    } catch (e) {
+        console.error('Error al cargar huéspedes para reserva:', e);
+    }
+}
+
+function initComboboxesHuespedReserva() {
+    initComboboxHuesped({
+        textoId: 'textoHuespedReserva',
+        hiddenId: 'huespedReserva',
+        listaId: 'listaHuespedReserva'
+    });
+    initComboboxHuesped({
+        textoId: 'textoHuespedReservaChin',
+        hiddenId: 'huespedReservaChin',
+        listaId: 'listaHuespedReservaChin'
+    });
+    if (!window.__comboboxHuespedClickCerrar) {
+        window.__comboboxHuespedClickCerrar = true;
+        document.addEventListener('click', (ev) => {
+            comboboxHuespedInstancias.forEach((inst) => {
+                const wrap = inst.textoEl && inst.textoEl.closest('.combobox-huesped-wrap');
+                if (wrap && !wrap.contains(ev.target)) {
+                    ocultarListaComboboxHuesped(inst);
+                }
+            });
+        });
+    }
 }
 
 function reservasHabitacionesFiltradas() {
@@ -107,6 +355,8 @@ function reservasHabitacionesFiltradas() {
         coincideBusqueda(r.habitacion_numero, t) ||
         coincideBusqueda(r.huesped_nombre, t) ||
         coincideBusqueda(r.huesped_apellido, t) ||
+        coincideBusqueda(r.tipo_habitacion_requerida, t) ||
+        coincideBusqueda(r.metodo_pago, t) ||
         coincideBusqueda(r.estado, t)
     );
 }
@@ -116,9 +366,11 @@ function reservasChinchorrosFiltradas() {
     if (!t) return reservasChinchorros;
     return reservasChinchorros.filter((r) =>
         coincideBusqueda(r.id, t) ||
-        coincideBusqueda(r.chinchorro_codigo, t) ||
+        coincideBusqueda(etiquetaChinchorroReserva(r), t) ||
         coincideBusqueda(r.huesped_nombre, t) ||
         coincideBusqueda(r.huesped_apellido, t) ||
+        coincideBusqueda(r.tipo_requerido, t) ||
+        coincideBusqueda(r.metodo_pago, t) ||
         coincideBusqueda(r.estado, t)
     );
 }
@@ -127,7 +379,9 @@ function chinchorrosFiltrados() {
     const t = filtrosBusqueda.chinchorros;
     if (!t) return chinchorros;
     return chinchorros.filter((c) =>
-        coincideBusqueda(c.codigo, t) ||
+        coincideBusqueda(etiquetaChinchorro(c), t) ||
+        coincideBusqueda(c.tipo, t) ||
+        coincideBusqueda(c.piso, t) ||
         coincideBusqueda(c.zona, t) ||
         coincideBusqueda(c.estado, t)
     );
@@ -214,6 +468,323 @@ function htmlFinCard(clase, etiqueta, monto, detalle) {
             ${detalle ? `<p class="fin-card-detalle">${detalle}</p>` : ''}
         </article>
     `;
+}
+
+function tarifaDiariaReservaHabitacion(r) {
+    const p = Number(r.habitacion_precio_diario);
+    return Number.isFinite(p) && p > 0 ? p : 0;
+}
+
+function tarifaDiariaReservaChinchorro(r) {
+    const p = Number(r.chinchorro_precio_diario);
+    return Number.isFinite(p) && p > 0 ? p : 0;
+}
+
+function ymdReservaIngreso(r) {
+    return String(r.fecha_ingreso).slice(0, 10);
+}
+
+function ymdReservaSalida(r) {
+    return String(r.fecha_salida).slice(0, 10);
+}
+
+function ymdEnRangoReserva(ymd, ing, sal) {
+    return ymd >= ing && ymd <= sal;
+}
+
+function reservaActivaEnFecha(r, ymd) {
+    if (r.estado !== 'Activa') return false;
+    return ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r));
+}
+
+function contarDiasSolapadosYMD(ing, sal, desdeYmd, hastaYmd) {
+    const start = ing > desdeYmd ? ing : desdeYmd;
+    const end = sal < hastaYmd ? sal : hastaYmd;
+    if (start > end) return 0;
+    let count = 0;
+    const cur = new Date(`${start}T12:00:00`);
+    const endD = new Date(`${end}T12:00:00`);
+    while (cur <= endD) {
+        count += 1;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+}
+
+function rangoMesActualYMD() {
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    const m = hoy.getMonth();
+    const primero = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const ultimoDia = new Date(y, m + 1, 0).getDate();
+    const ultimo = `${y}-${String(m + 1).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+    return { primero, ultimo, etiqueta: NOMBRES_MES_CAL[m] };
+}
+
+function inicioSemanaActualYMD(hoyYmd) {
+    const d = new Date(`${hoyYmd}T12:00:00`);
+    const dow = d.getDay();
+    const diff = dow === 0 ? 6 : dow - 1;
+    d.setDate(d.getDate() - diff);
+    return fechaLocalYMD(d);
+}
+
+function finSemanaActualYMD(hoyYmd) {
+    const d = new Date(`${inicioSemanaActualYMD(hoyYmd)}T12:00:00`);
+    d.setDate(d.getDate() + 6);
+    return fechaLocalYMD(d);
+}
+
+function listarDiasEntreYMD(desde, hasta) {
+    const out = [];
+    const cur = new Date(`${desde}T12:00:00`);
+    const end = new Date(`${hasta}T12:00:00`);
+    while (cur <= end) {
+        out.push(fechaLocalYMD(cur));
+        cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+}
+
+function recursosOcupadosEnFecha(ymd) {
+    const ids = new Set();
+    reservas.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd)) ids.add(`h-${r.habitacion_id}`);
+    });
+    reservasChinchorros.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd)) ids.add(`c-${r.chinchorro_id}`);
+    });
+    return ids.size;
+}
+
+function ocupacionPorcentajeEnFecha(ymd) {
+    const total = habitaciones.length + chinchorros.length;
+    if (!total) return 0;
+    return pct(recursosOcupadosEnFecha(ymd), total);
+}
+
+function ocupacionPromedioEnDias(diasYmd) {
+    if (!diasYmd.length) return 0;
+    const suma = diasYmd.reduce((acc, ymd) => acc + ocupacionPorcentajeEnFecha(ymd), 0);
+    return Math.round(suma / diasYmd.length);
+}
+
+function personasHospedadasEnFecha(ymd) {
+    const ids = new Set();
+    reservas.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd) && r.huesped_id != null) ids.add(`h-${r.huesped_id}`);
+    });
+    reservasChinchorros.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd) && r.huesped_id != null) ids.add(`c-${r.huesped_id}`);
+    });
+    return ids.size;
+}
+
+function ingresosDelDia(ymd) {
+    let total = 0;
+    reservas.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd)) total += tarifaDiariaReservaHabitacion(r);
+    });
+    reservasChinchorros.forEach((r) => {
+        if (reservaActivaEnFecha(r, ymd)) total += tarifaDiariaReservaChinchorro(r);
+    });
+    return total;
+}
+
+function ingresosReservaEnRango(r, desdeYmd, hastaYmd, tarifaFn) {
+    if (r.estado === 'Cancelada') return 0;
+    const dias = contarDiasSolapadosYMD(ymdReservaIngreso(r), ymdReservaSalida(r), desdeYmd, hastaYmd);
+    return dias * tarifaFn(r);
+}
+
+function ingresosMesActual() {
+    const { primero, ultimo } = rangoMesActualYMD();
+    let total = 0;
+    reservas.forEach((r) => {
+        total += ingresosReservaEnRango(r, primero, ultimo, tarifaDiariaReservaHabitacion);
+    });
+    reservasChinchorros.forEach((r) => {
+        total += ingresosReservaEnRango(r, primero, ultimo, tarifaDiariaReservaChinchorro);
+    });
+    return total;
+}
+
+function ingresosPorHabitacionMesMap() {
+    const { primero, ultimo } = rangoMesActualYMD();
+    const map = new Map();
+    habitaciones.forEach((h) => {
+        const label = h.numero ? `Habitación ${h.numero}` : `Habitación #${h.id}`;
+        map.set(Number(h.id), { label, total: 0 });
+    });
+    reservas.forEach((r) => {
+        const id = Number(r.habitacion_id);
+        if (!map.has(id)) {
+            map.set(id, {
+                label: r.habitacion_numero ? `Habitación ${r.habitacion_numero}` : `Habitación #${id}`,
+                total: 0
+            });
+        }
+        const row = map.get(id);
+        row.total += ingresosReservaEnRango(r, primero, ultimo, tarifaDiariaReservaHabitacion);
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+}
+
+function ingresosPorChinchorroMesMap() {
+    const { primero, ultimo } = rangoMesActualYMD();
+    const map = new Map();
+    chinchorros.forEach((c) => {
+        const label = c.codigo ? `Chinchorro ${c.codigo}` : `Chinchorro #${c.id}`;
+        map.set(Number(c.id), { label, total: 0 });
+    });
+    reservasChinchorros.forEach((r) => {
+        const id = Number(r.chinchorro_id);
+        if (!map.has(id)) {
+            map.set(id, {
+                label: r.chinchorro_codigo ? `Chinchorro ${r.chinchorro_codigo}` : `Chinchorro #${id}`,
+                total: 0
+            });
+        }
+        const row = map.get(id);
+        row.total += ingresosReservaEnRango(r, primero, ultimo, tarifaDiariaReservaChinchorro);
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+}
+
+function htmlDashKpiCard(etiqueta, valor, claseColor, esMoneda) {
+    const display = esMoneda ? formatoMoneda(valor) : String(valor);
+    return `
+        <article class="dash-kpi-card">
+            <p class="dash-kpi-label">${etiqueta}</p>
+            <p class="dash-kpi-valor ${claseColor}">${display}</p>
+        </article>
+    `;
+}
+
+function renderDashboardKpis() {
+    const grid = document.getElementById('dashboardKpiGrid');
+    if (!grid) return;
+
+    const hoy = fechaLocalYMD();
+    const semIni = inicioSemanaActualYMD(hoy);
+    const semFin = finSemanaActualYMD(hoy);
+    const diasSemana = listarDiasEntreYMD(semIni, hoy > semFin ? semFin : hoy);
+    const { primero, ultimo } = rangoMesActualYMD();
+    const diasMes = listarDiasEntreYMD(primero, hoy > ultimo ? ultimo : hoy);
+
+    const reservasActivas =
+        reservas.filter((r) => r.estado === 'Activa').length +
+        reservasChinchorros.filter((r) => r.estado === 'Activa').length;
+    const clientesTotales = huespedes.length;
+
+    grid.innerHTML = `
+        ${htmlDashKpiCard('Ocupación hoy', `${ocupacionPorcentajeEnFecha(hoy)}%`, 'dash-kpi--blue', false)}
+        ${htmlDashKpiCard('Ocupación mensual', `${ocupacionPromedioEnDias(diasMes)}%`, 'dash-kpi--purple', false)}
+        ${htmlDashKpiCard('Ocupación semanal', `${ocupacionPromedioEnDias(diasSemana)}%`, 'dash-kpi--indigo', false)}
+        ${htmlDashKpiCard('Personas hospedadas hoy', personasHospedadasEnFecha(hoy), 'dash-kpi--teal', false)}
+        ${htmlDashKpiCard('Ingresos hoy', ingresosDelDia(hoy), 'dash-kpi--green', true)}
+        ${htmlDashKpiCard('Ingresos mes', ingresosMesActual(), 'dash-kpi--orange', true)}
+        ${htmlDashKpiCard('Reservas activas', reservasActivas, 'dash-kpi--red', false)}
+        ${htmlDashKpiCard('Clientes totales', clientesTotales, 'dash-kpi--slate', false)}
+    `;
+}
+
+function renderIngresosPorRecursoMes() {
+    const elH = document.getElementById('ingresosPorHabitacionMes');
+    const elC = document.getElementById('ingresosPorChinchorroMes');
+    const filasH = ingresosPorHabitacionMesMap();
+    const filasC = ingresosPorChinchorroMesMap();
+
+    const htmlGrid = (filas, vacio) => {
+        if (!filas.length) {
+            return `<p class="dash-sin-datos">${vacio}</p>`;
+        }
+        return filas
+            .map(
+                (f) => `
+            <div class="dash-ingreso-item">
+                <span class="dash-ingreso-nombre">${escapeHtmlCal(f.label)}</span>
+                <span class="dash-ingreso-monto">${escapeHtmlCal(formatoMoneda(f.total))}</span>
+            </div>`
+            )
+            .join('');
+    };
+
+    if (elH) elH.innerHTML = htmlGrid(filasH, 'No hay habitaciones registradas.');
+    if (elC) elC.innerHTML = htmlGrid(filasC, 'No hay chinchorros registrados.');
+}
+
+function renderUltimasReservasDash() {
+    const cont = document.getElementById('ultimasReservasDash');
+    if (!cont) return;
+
+    const items = [];
+    reservas.forEach((r) => {
+        items.push({
+            tipo: 'Habitación',
+            recurso: r.habitacion_numero ? `Hab. ${r.habitacion_numero}` : `Hab. #${r.habitacion_id}`,
+            huesped: `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—',
+            ingreso: ymdReservaIngreso(r),
+            salida: ymdReservaSalida(r),
+            estado: r.estado,
+            id: Number(r.id)
+        });
+    });
+    reservasChinchorros.forEach((r) => {
+        items.push({
+            tipo: 'Chinchorro',
+            recurso: r.chinchorro_codigo ? `Chin. ${r.chinchorro_codigo}` : `Chin. #${r.chinchorro_id}`,
+            huesped: `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—',
+            ingreso: ymdReservaIngreso(r),
+            salida: ymdReservaSalida(r),
+            estado: r.estado,
+            id: Number(r.id)
+        });
+    });
+
+    items.sort((a, b) => b.id - a.id);
+    const ultimas = items.slice(0, 8);
+
+    if (!ultimas.length) {
+        cont.innerHTML = '<p class="dash-sin-datos">Aún no hay reservas registradas.</p>';
+        return;
+    }
+
+    cont.innerHTML = `
+        <table class="data-table dash-tabla-ultimas">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Recurso</th>
+                    <th>Huésped</th>
+                    <th>Ingreso</th>
+                    <th>Salida</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${ultimas
+                    .map(
+                        (u) => `
+                <tr>
+                    <td>${escapeHtmlCal(u.tipo)}</td>
+                    <td><strong>${escapeHtmlCal(u.recurso)}</strong></td>
+                    <td>${escapeHtmlCal(u.huesped)}</td>
+                    <td>${escapeHtmlCal(u.ingreso)}</td>
+                    <td>${escapeHtmlCal(u.salida)}</td>
+                    <td>${escapeHtmlCal(u.estado)}</td>
+                </tr>`
+                    )
+                    .join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function renderIndicadoresDashboard() {
+    renderDashboardKpis();
+    renderIngresosPorRecursoMes();
+    renderUltimasReservasDash();
 }
 
 function renderIndicadoresFinanciero() {
@@ -429,8 +1000,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
     
-    // Si está autenticado, cargar datos
+    // Si está autenticado, sincronizar estados con reservas y cargar datos
     cargarNombreHotel();
+    await sincronizarEstadosInventarioConReservas();
     cargarHabitaciones();
     cargarChinchorros();
     cargarHuespedes();
@@ -471,6 +1043,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    initComboboxesHuespedReserva();
+    enlazarEventosCalendarioReserva();
+
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
     }
@@ -497,7 +1072,7 @@ function mostrarSeccion(seccion, boton) {
     }
     if (seccion === 'indicadores') {
         refrescarPanelesOcupacionDual();
-        renderIndicadoresOcupacion();
+        renderIndicadoresDashboard();
         renderIndicadoresFinanciero();
     }
     if (seccion === 'calendario') {
@@ -541,6 +1116,34 @@ function listaDiasMesCal(year, monthIdx) {
     return out;
 }
 
+function sumarDiasYMD(ymd, dias) {
+    const p = String(ymd).slice(0, 10).split('-').map(Number);
+    if (p.length < 3) return ymd;
+    const dt = new Date(p[0], p[1] - 1, p[2]);
+    dt.setDate(dt.getDate() + (Number(dias) || 0));
+    return ymdLocalDesdeDate(dt);
+}
+
+/** Fechas sugeridas al reservar desde el calendario (ingreso + 1 noche/día). */
+let calendarioReservaPendiente = null;
+
+function tipoRecursoDesdeWrapCalendario(wrapEl) {
+    if (!wrapEl) return 'habitacion';
+    return wrapEl.id === 'calendarioChinchorrosWrap' ? 'chinchorro' : 'habitacion';
+}
+
+function reservaActivaEnCeldaCalendario(recursoId, ymd, tipo) {
+    const lista = tipo === 'chinchorro' ? reservasChinchorros : reservas;
+    const campo = tipo === 'chinchorro' ? 'chinchorro_id' : 'habitacion_id';
+    return lista.find((r) => {
+        if (r.estado !== 'Activa') return false;
+        if (Number(r[campo]) !== Number(recursoId)) return false;
+        const ing = String(r.fecha_ingreso).slice(0, 10);
+        const sal = String(r.fecha_salida).slice(0, 10);
+        return ymd >= ing && ymd <= sal;
+    });
+}
+
 function diaOcupadoPorReservaActiva(recursoId, ymd, listaReservas, idCampo) {
     return listaReservas.some((r) => {
         if (r.estado !== 'Activa') return false;
@@ -571,8 +1174,9 @@ function construirTablaCalendario(esquinaLabel, filas, dias, idCampo, listaReser
     let headNums = `<tr><th class="cal-corner">${esquinaLabel}</th>`;
     let headDow = '<tr><th class="cal-corner"></th>';
     dias.forEach(({ ymd, date, dayNum }) => {
-        headNums += `<th class="cal-dia-num" scope="col" title="${ymd}">${dayNum}</th>`;
-        headDow += `<th class="cal-dia-dow" scope="col">${DIAS_SEMANA_CAL[date.getDay()]}</th>`;
+        const tituloDia = attrEsc(`Reservar desde ${ymd}`);
+        headNums += `<th class="cal-dia-num cal-dia-click" scope="col" data-ymd="${ymd}" title="${tituloDia}" role="button" tabindex="0">${dayNum}</th>`;
+        headDow += `<th class="cal-dia-dow cal-dia-click" scope="col" data-ymd="${ymd}" title="${tituloDia}" role="button" tabindex="0">${DIAS_SEMANA_CAL[date.getDay()]}</th>`;
     });
     headNums += '</tr>';
     headDow += '</tr>';
@@ -582,10 +1186,25 @@ function construirTablaCalendario(esquinaLabel, filas, dias, idCampo, listaReser
         body += `<tr><th class="cal-recurso" scope="row">${escapeHtmlCal(f.label)}</th>`;
         dias.forEach(({ ymd }) => {
             const ocupado = diaOcupadoPorReservaActiva(f.id, ymd, listaReservas, idCampo);
-            const cls = ocupado ? 'cal-ocupado' : 'cal-libre';
-            const estadoTxt = ocupado ? 'Ocupado' : 'Disponible';
+            const bloqueado = !!f.noReservable;
+            let cls;
+            let estadoTxt;
+            let inner;
+            if (ocupado) {
+                cls = 'cal-ocupado';
+                estadoTxt = 'Ocupado (clic para ver reserva)';
+                inner = '●';
+            } else if (bloqueado) {
+                cls = 'cal-no-reservable';
+                estadoTxt = 'En limpieza o fuera de servicio — no reservable';
+                inner = '—';
+            } else {
+                cls = 'cal-libre';
+                estadoTxt = 'Disponible (clic para reservar)';
+                inner = '+';
+            }
             const tituloCelda = attrEsc(`${f.label} · ${ymd} · ${estadoTxt}`);
-            body += `<td class="cal-cell ${cls}" title="${tituloCelda}"><span class="cal-cell-inner">${ocupado ? '●' : '·'}</span></td>`;
+            body += `<td class="cal-cell cal-cell-click ${cls}" data-recurso-id="${f.id}" data-ymd="${ymd}" data-ocupado="${ocupado ? '1' : '0'}" data-bloqueado="${bloqueado ? '1' : '0'}" title="${tituloCelda}" role="button" tabindex="0"><span class="cal-cell-inner">${inner}</span></td>`;
         });
         body += '</tr>';
     });
@@ -603,11 +1222,192 @@ function renderCalendarioDisponibilidad() {
     titulo.textContent = `${NOMBRES_MES_CAL[m]} ${y}`;
 
     const dias = listaDiasMesCal(y, m);
-    const filasHab = habitaciones.map((h) => ({ id: h.id, label: h.numero }));
-    const filasCh = chinchorros.map((c) => ({ id: c.id, label: c.codigo }));
+    const filasHab = habitaciones.map((h) => ({
+        id: h.id,
+        label: etiquetaHabitacion(h),
+        noReservable: !inventarioPermiteNuevaReserva(h.estado)
+    }));
+    const filasCh = chinchorros.map((c) => ({
+        id: c.id,
+        label: etiquetaChinchorro(c),
+        noReservable: !inventarioPermiteNuevaReserva(c.estado)
+    }));
 
     wrapH.innerHTML = construirTablaCalendario('Habitación', filasHab, dias, 'habitacion_id', reservas);
     wrapC.innerHTML = construirTablaCalendario('Chinchorro', filasCh, dias, 'chinchorro_id', reservasChinchorros);
+}
+
+function fechasReservaDesdeCalendario(ymdClic) {
+    const hoy = fechaLocalYMD();
+    const ingreso = String(ymdClic).slice(0, 10) < hoy ? hoy : String(ymdClic).slice(0, 10);
+    const salida = sumarDiasYMD(ingreso, 1);
+    return { ingreso, salida };
+}
+
+async function abrirReservaHabitacionDesdeCalendario(habitacionId, ymdClic) {
+    if (habitacionId != null) {
+        const hab = habitaciones.find((x) => Number(x.id) === Number(habitacionId));
+        if (hab && !inventarioPermiteNuevaReserva(hab.estado)) {
+            alert(mensajeInventarioNoReservableUI(hab.estado, 'habitacion'));
+            return;
+        }
+    }
+    const { ingreso, salida } = fechasReservaDesdeCalendario(ymdClic);
+    await asegurarHuespedesParaReserva();
+    document.getElementById('formReserva').reset();
+    document.getElementById('idReservaEdicion').value = '';
+    document.getElementById('tituloModalReserva').textContent = 'Nueva reserva (desde calendario)';
+    document.getElementById('reservaAdultos').value = '1';
+    document.getElementById('reservaNinos').value = '0';
+    document.getElementById('metodoPagoReserva').value = 'Efectivo';
+    document.getElementById('tarifaNocheReserva').value = '0';
+    document.getElementById('observacionesReserva').value = '';
+    establecerModoModalReserva(false);
+    limpiarComboboxHuesped('huespedReserva');
+    actualizarSelectsReserva();
+    if (habitacionId != null) {
+        const hab = habitaciones.find((x) => Number(x.id) === Number(habitacionId));
+        const selHab = document.getElementById('habitacionReserva');
+        asegurarOpcionEnSelect(selHab, habitacionId, hab ? etiquetaHabitacion(hab) : undefined);
+    }
+    document.getElementById('fechaIngreso').value = ingreso;
+    document.getElementById('fechaSalida').value = salida;
+    aplicarFechasMinNuevaReservaHabitacion();
+    const fs = document.getElementById('fechaSalida');
+    if (fs) fs.min = ingreso;
+    document.getElementById('modalReserva').classList.add('active');
+}
+
+async function abrirReservaChinchorroDesdeCalendario(chinchorroId, ymdClic) {
+    if (chinchorroId != null) {
+        const ch = chinchorros.find((x) => Number(x.id) === Number(chinchorroId));
+        if (ch && !inventarioPermiteNuevaReserva(ch.estado)) {
+            alert(mensajeInventarioNoReservableUI(ch.estado, 'chinchorro'));
+            return;
+        }
+    }
+    const { ingreso, salida } = fechasReservaDesdeCalendario(ymdClic);
+    await asegurarHuespedesParaReserva();
+    document.getElementById('formReservaChinchorro').reset();
+    document.getElementById('idReservaChinchorroEdicion').value = '';
+    const titulo = document.getElementById('tituloModalReservaChin');
+    if (titulo) titulo.textContent = 'Nueva reserva (desde calendario)';
+    document.getElementById('reservaChinAdultos').value = '1';
+    document.getElementById('reservaChinNinos').value = '0';
+    document.getElementById('metodoPagoReservaChin').value = 'Efectivo';
+    document.getElementById('tarifaDiaReservaChin').value = '0';
+    document.getElementById('observacionesReservaChin').value = '';
+    limpiarComboboxHuesped('huespedReservaChin');
+    actualizarSelectsReservaChinchorro();
+    if (chinchorroId != null) {
+        const ch = chinchorros.find((x) => Number(x.id) === Number(chinchorroId));
+        const sel = document.getElementById('chinchorroReserva');
+        if (sel && ch) {
+            asegurarOpcionEnSelect(sel, chinchorroId, etiquetaChinchorro(ch));
+        }
+    }
+    const fi = document.getElementById('fechaIngresoChin');
+    const fs = document.getElementById('fechaSalidaChin');
+    const hoy = fechaLocalYMD();
+    if (fi) {
+        fi.min = hoy;
+        fi.value = ingreso;
+    }
+    if (fs) {
+        fs.min = ingreso;
+        fs.value = salida;
+    }
+    document.getElementById('modalReservaChinchorro').classList.add('active');
+}
+
+function abrirElegirTipoReservaDesdeCalendario(ymdClic, tipoForzado) {
+    const { ingreso, salida } = fechasReservaDesdeCalendario(ymdClic);
+    calendarioReservaPendiente = { ingreso, salida, recursoId: null };
+    if (tipoForzado === 'habitacion') {
+        abrirReservaHabitacionDesdeCalendario(null, ingreso);
+        return;
+    }
+    if (tipoForzado === 'chinchorro') {
+        abrirReservaChinchorroDesdeCalendario(null, ingreso);
+        return;
+    }
+    mostrarModalElegirTipoReserva();
+}
+
+async function onClickCalendarioCelda(ev) {
+    const wrap = ev.currentTarget;
+    const tipo = tipoRecursoDesdeWrapCalendario(wrap);
+
+    const thDia = ev.target.closest('.cal-dia-click');
+    if (thDia && thDia.dataset.ymd) {
+        abrirElegirTipoReservaDesdeCalendario(thDia.dataset.ymd, tipo);
+        return;
+    }
+
+    const td = ev.target.closest('.cal-cell-click');
+    if (!td || !td.dataset.ymd) return;
+
+    const ymd = td.dataset.ymd;
+    const recursoId = parseInt(td.dataset.recursoId, 10);
+    const ocupado = td.dataset.ocupado === '1';
+    const bloqueado = td.dataset.bloqueado === '1';
+
+    if (!ocupado && bloqueado) {
+        const rec = recursoInventarioPorTipoId(tipo, recursoId);
+        alert(mensajeInventarioNoReservableUI(rec && rec.estado, tipo));
+        return;
+    }
+
+    if (ocupado) {
+        const r = reservaActivaEnCeldaCalendario(recursoId, ymd, tipo);
+        if (r) {
+            const ver = confirm(
+                'Este día ya tiene una reserva activa.\n\n¿Desea abrir esa reserva para modificarla?'
+            );
+            if (ver) {
+                if (tipo === 'chinchorro') {
+                    await modificarReservaChinchorro(r.id);
+                } else {
+                    await modificarReserva(r.id);
+                }
+            }
+        } else {
+            alert('Este día está marcado como ocupado.');
+        }
+        return;
+    }
+
+    if (tipo === 'chinchorro') {
+        await abrirReservaChinchorroDesdeCalendario(recursoId, ymd);
+    } else {
+        await abrirReservaHabitacionDesdeCalendario(recursoId, ymd);
+    }
+}
+
+function enlazarEventosCalendarioReserva() {
+    if (window.__calReservaEventosOk) return;
+    window.__calReservaEventosOk = true;
+    ['calendarioHabitacionesWrap', 'calendarioChinchorrosWrap'].forEach((id) => {
+        const wrap = document.getElementById(id);
+        if (!wrap) return;
+        wrap.addEventListener('click', onClickCalendarioCelda);
+        wrap.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            const el = ev.target.closest('.cal-cell-click, .cal-dia-click');
+            if (!el) return;
+            ev.preventDefault();
+            el.click();
+        });
+    });
+}
+
+/** Recalcula Ocupada / Reservada / Disponible según reservas activas en el servidor. */
+async function sincronizarEstadosInventarioConReservas() {
+    try {
+        await fetchWithAuth(`${API_URL}/inventario/sincronizar-estados`, { method: 'POST' });
+    } catch (e) {
+        console.warn('No se pudo sincronizar estados del inventario:', e);
+    }
 }
 
 async function actualizarCalendarioDisponibilidad() {
@@ -743,6 +1543,37 @@ function textoVistaInventario(v) {
     return 'tarjetas (cuadrícula)';
 }
 
+const ESTADOS_INVENTARIO = [
+    'Disponible',
+    'Ocupada',
+    'Reservada',
+    'En limpieza',
+    'Fuera de servicio'
+];
+
+/** Habitaciones/chinchorros en limpieza o fuera de servicio no se ofrecen para reservar. */
+function inventarioPermiteNuevaReserva(estado) {
+    const e = String(estado || '').trim();
+    return e !== 'En limpieza' && e !== 'Fuera de servicio';
+}
+
+function mensajeInventarioNoReservableUI(estado, tipo) {
+    const e = String(estado || '').trim();
+    if (inventarioPermiteNuevaReserva(e)) return '';
+    const unidad = tipo === 'chinchorro' ? 'chinchorro' : 'habitación';
+    return `Ese ${unidad} está en limpieza o fuera de servicio y no se puede reservar.`;
+}
+
+function recursoInventarioPorTipoId(tipo, id) {
+    if (tipo === 'chinchorro') {
+        return chinchorros.find((x) => Number(x.id) === Number(id));
+    }
+    return habitaciones.find((x) => Number(x.id) === Number(id));
+}
+
+/** Estados que el usuario puede elegir en el listado (no reserva ni fuera de servicio). */
+const ESTADOS_HABITACION_LISTADO = ['Disponible', 'En limpieza'];
+
 function claseEstadoBadgeRecurso(estado) {
     const e = String(estado == null ? '' : estado)
         .trim()
@@ -750,6 +1581,219 @@ function claseEstadoBadgeRecurso(estado) {
         .replace(/[^a-z0-9áéíóúñ_-]+/gi, '-')
         .replace(/^-+|-+$/g, '');
     return `estado-badge estado-${e || 'desconocido'}`;
+}
+
+function habitacionConReservaActivaHoy(hab) {
+    return Number(hab && hab.reservas_activas) > 0;
+}
+
+function habitacionEstadoSoloLecturaEnListado(hab) {
+    const est = String((hab && hab.estado) || '').trim();
+    if (habitacionConReservaActivaHoy(hab)) return true;
+    if (est === 'Fuera de servicio') return true;
+    if (est === 'Ocupada' || est === 'Reservada') return true;
+    return false;
+}
+
+function textoAyudaEstadoHabitacionListado(hab) {
+    const est = String((hab && hab.estado) || '').trim();
+    if (habitacionConReservaActivaHoy(hab)) {
+        return 'Ocupada por reserva activa. Gestione la reserva para liberar la habitación.';
+    }
+    if (est === 'Fuera de servicio') {
+        return 'Fuera de servicio. Cámbielo desde el botón Modificar.';
+    }
+    if (est === 'Ocupada' || est === 'Reservada') {
+        return 'Estado asignado por el sistema. Use Modificar o la reserva asociada.';
+    }
+    return '';
+}
+
+function htmlEstadoHabitacionInventario(hab) {
+    const est = ESTADOS_INVENTARIO.includes(hab.estado) ? hab.estado : 'Disponible';
+    const cls = claseEstadoBadgeRecurso(est);
+    const titulo = textoAyudaEstadoHabitacionListado(hab);
+
+    if (habitacionEstadoSoloLecturaEnListado(hab)) {
+        const etiqueta =
+            habitacionConReservaActivaHoy(hab) && est === 'Ocupada'
+                ? `${est} (reserva)`
+                : est;
+        return `<span class="estado-badge estado-readonly ${cls}" title="${escapeHtmlCal(titulo)}">${escapeHtmlCal(etiqueta)}</span>`;
+    }
+
+    const opciones = ESTADOS_HABITACION_LISTADO.map((e) => {
+        const sel = e === est ? ' selected' : '';
+        return `<option value="${escapeHtmlCal(e)}"${sel}>${escapeHtmlCal(e)}</option>`;
+    }).join('');
+    return `<select class="select-estado-inventario ${cls}" data-estado-prev="${escapeHtmlCal(est)}" title="${escapeHtmlCal('Solo Disponible o En limpieza')}" aria-label="Estado de la habitación" onchange="actualizarEstadoHabitacionListado(${Number(hab.id)}, this)">${opciones}</select>`;
+}
+
+function aplicarReglasSelectEstadoHabitacionModal(hab) {
+    const sel = document.getElementById('estadoHabitacion');
+    if (!sel) return;
+    sel.disabled = false;
+    Array.from(sel.options).forEach((opt) => {
+        opt.disabled = false;
+        opt.hidden = false;
+        if (opt.value === 'Ocupada' || opt.value === 'Reservada') {
+            opt.disabled = true;
+            opt.hidden = true;
+        }
+    });
+}
+
+async function actualizarEstadoHabitacionListado(id, selectEl) {
+    const nuevoEstado = selectEl.value;
+    if (!ESTADOS_HABITACION_LISTADO.includes(nuevoEstado)) {
+        alert('Solo puede elegir Disponible o En limpieza desde el listado.');
+        selectEl.value = selectEl.dataset.estadoPrev || 'Disponible';
+        return;
+    }
+    const anterior =
+        selectEl.dataset.estadoPrev ||
+        (habitaciones.find((x) => Number(x.id) === Number(id)) || {}).estado ||
+        'Disponible';
+    if (nuevoEstado === anterior) return;
+
+    selectEl.disabled = true;
+    try {
+        const response = await fetchWithAuth(`${API_URL}/habitaciones/${id}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: nuevoEstado })
+        });
+        if (response.ok) {
+            const hab = habitaciones.find((x) => Number(x.id) === Number(id));
+            if (hab) hab.estado = nuevoEstado;
+            selectEl.dataset.estadoPrev = nuevoEstado;
+            selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(nuevoEstado)}`;
+            cargarHabitaciones();
+        } else {
+            const error = await response.json();
+            alert('Error: ' + (error.error || 'No se pudo actualizar el estado'));
+            selectEl.value = anterior;
+            selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(anterior)}`;
+        }
+    } catch (error) {
+        alert('Error al cambiar el estado de la habitación');
+        console.error(error);
+        selectEl.value = anterior;
+        selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(anterior)}`;
+    } finally {
+        selectEl.disabled = false;
+    }
+}
+
+const ESTADOS_CHINCHORRO_LISTADO = ['Disponible', 'En limpieza'];
+
+function chinchorroConReservaActivaHoy(ch) {
+    return Number(ch && ch.reservas_activas) > 0;
+}
+
+function chinchorroEstadoSoloLecturaEnListado(ch) {
+    const est = String((ch && ch.estado) || '').trim();
+    if (chinchorroConReservaActivaHoy(ch)) return true;
+    if (est === 'Fuera de servicio') return true;
+    if (est === 'Ocupada' || est === 'Reservada') return true;
+    return false;
+}
+
+function textoAyudaEstadoChinchorroListado(ch) {
+    const est = String((ch && ch.estado) || '').trim();
+    if (chinchorroConReservaActivaHoy(ch)) {
+        return 'Ocupado por reserva activa. Gestione la reserva para liberar el chinchorro.';
+    }
+    if (est === 'Fuera de servicio') {
+        return 'Fuera de servicio. Cámbielo desde el botón Modificar.';
+    }
+    if (est === 'Ocupada' || est === 'Reservada') {
+        return 'Estado asignado por el sistema. Use Modificar o la reserva asociada.';
+    }
+    return '';
+}
+
+function htmlEstadoChinchorroInventario(ch) {
+    const est = ESTADOS_INVENTARIO.includes(ch.estado) ? ch.estado : 'Disponible';
+    const cls = claseEstadoBadgeRecurso(est);
+    const titulo = textoAyudaEstadoChinchorroListado(ch);
+
+    if (chinchorroEstadoSoloLecturaEnListado(ch)) {
+        const etiqueta =
+            chinchorroConReservaActivaHoy(ch) && est === 'Ocupada'
+                ? `${est} (reserva)`
+                : est;
+        return `<span class="estado-badge estado-readonly ${cls}" title="${escapeHtmlCal(titulo)}">${escapeHtmlCal(etiqueta)}</span>`;
+    }
+
+    const opciones = ESTADOS_CHINCHORRO_LISTADO.map((e) => {
+        const sel = e === est ? ' selected' : '';
+        return `<option value="${escapeHtmlCal(e)}"${sel}>${escapeHtmlCal(e)}</option>`;
+    }).join('');
+    return `<select class="select-estado-inventario ${cls}" data-estado-prev="${escapeHtmlCal(est)}" title="${escapeHtmlCal('Solo Disponible o En limpieza')}" aria-label="Estado del chinchorro" onchange="actualizarEstadoChinchorroListado(${Number(ch.id)}, this)">${opciones}</select>`;
+}
+
+function aplicarReglasSelectEstadoChinchorroModal(ch) {
+    const sel = document.getElementById('estadoChinchorro');
+    if (!sel) return;
+    const conReserva = ch && chinchorroConReservaActivaHoy(ch);
+    Array.from(sel.options).forEach((opt) => {
+        opt.disabled = false;
+        opt.hidden = false;
+    });
+    if (conReserva) {
+        sel.disabled = true;
+        return;
+    }
+    sel.disabled = false;
+    Array.from(sel.options).forEach((opt) => {
+        if (opt.value === 'Ocupada' || opt.value === 'Reservada') {
+            opt.disabled = true;
+            opt.hidden = true;
+        }
+    });
+}
+
+async function actualizarEstadoChinchorroListado(id, selectEl) {
+    const nuevoEstado = selectEl.value;
+    if (!ESTADOS_CHINCHORRO_LISTADO.includes(nuevoEstado)) {
+        alert('Solo puede elegir Disponible o En limpieza desde el listado.');
+        selectEl.value = selectEl.dataset.estadoPrev || 'Disponible';
+        return;
+    }
+    const anterior =
+        selectEl.dataset.estadoPrev ||
+        (chinchorros.find((x) => Number(x.id) === Number(id)) || {}).estado ||
+        'Disponible';
+    if (nuevoEstado === anterior) return;
+
+    selectEl.disabled = true;
+    try {
+        const response = await fetchWithAuth(`${API_URL}/chinchorros/${id}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: nuevoEstado })
+        });
+        if (response.ok) {
+            const ch = chinchorros.find((x) => Number(x.id) === Number(id));
+            if (ch) ch.estado = nuevoEstado;
+            selectEl.dataset.estadoPrev = nuevoEstado;
+            selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(nuevoEstado)}`;
+            cargarChinchorros();
+        } else {
+            const error = await response.json();
+            alert('Error: ' + (error.error || 'No se pudo actualizar el estado'));
+            selectEl.value = anterior;
+            selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(anterior)}`;
+        }
+    } catch (error) {
+        alert('Error al cambiar el estado del chinchorro');
+        console.error(error);
+        selectEl.value = anterior;
+        selectEl.className = `select-estado-inventario ${claseEstadoBadgeRecurso(anterior)}`;
+    } finally {
+        selectEl.disabled = false;
+    }
 }
 
 function aplicarLayoutWrapInventario(wrapId, campoHotel) {
@@ -1154,10 +2198,11 @@ async function actualizarIndicadoresOcupacion() {
     await Promise.all([
         cargarHabitaciones(),
         cargarChinchorros(),
+        cargarHuespedes(),
         cargarReservas(),
         cargarReservasChinchorros()
     ]);
-    renderIndicadoresOcupacion();
+    renderIndicadoresDashboard();
     renderIndicadoresFinanciero();
     refrescarPanelesOcupacionDual();
 }
@@ -1168,7 +2213,7 @@ function mostrarHabitaciones() {
 
     actualizarResumenOcupacion();
     refrescarPanelesOcupacionDual();
-    renderIndicadoresOcupacion();
+    renderIndicadoresDashboard();
     renderIndicadoresFinanciero();
 
     aplicarLayoutsVistasInventarioDesdeHotel();
@@ -1197,25 +2242,18 @@ function mostrarHabitaciones() {
         if (tbody) {
             tbody.innerHTML = listaHabitaciones
                 .map((habitacion) => {
-                    const precio = formatoMoneda(Number(habitacion.precio_diario) || 0);
                     const est = habitacion.estado || '';
-                    const numJson = JSON.stringify(habitacion.numero != null ? String(habitacion.numero) : '');
-                    const estJson = JSON.stringify(est);
-                    const accionEstado =
-                        est === 'Disponible'
-                            ? '🔒 Ocupar'
-                            : '🔓 Liberar';
+                    const etiquetaJson = JSON.stringify(etiquetaHabitacion(habitacion));
                     return `
             <tr>
-                <td><strong>${escapeHtmlCal(habitacion.numero)}</strong></td>
+                <td><strong>${escapeHtmlCal(etiquetaHabitacion(habitacion))}</strong></td>
                 <td>${escapeHtmlCal(habitacion.tipo || 'N/A')}</td>
-                <td>${escapeHtmlCal(precio)}</td>
+                <td>${escapeHtmlCal(habitacion.piso || '-')}</td>
                 <td>${escapeHtmlCal(String(habitacion.total_camas ?? 0))}</td>
-                <td><span class="${claseEstadoBadgeRecurso(est)}">${escapeHtmlCal(est)}</span></td>
+                <td class="td-estado-inventario">${htmlEstadoHabitacionInventario(habitacion)}</td>
                 <td class="td-acciones-inventario">
-                    <button type="button" class="btn-primary btn-small" onclick="gestionarCamas(${habitacion.id}, ${numJson})">🛏️ Camas</button>
-                    <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarHabitacion(${habitacion.id})">✏️ Tarifa / datos</button>
-                    <button type="button" class="btn-secondary btn-small" onclick="cambiarEstadoHabitacion(${habitacion.id}, ${estJson})">${accionEstado}</button>
+                    <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarHabitacion(${habitacion.id})">✏️ Modificar</button>
+                    <button type="button" class="btn-primary btn-small" onclick="gestionarCamas(${habitacion.id}, ${etiquetaJson})">🛏️ Camas</button>
                     <button type="button" class="btn-danger btn-small" onclick="eliminarHabitacion(${habitacion.id})">🗑️ Eliminar</button>
                 </td>
             </tr>`;
@@ -1236,25 +2274,23 @@ function mostrarHabitaciones() {
         const est = habitacion.estado || '';
         card.innerHTML = `
             <div class="habitacion-header">
-                <div class="habitacion-numero">Habitación ${escapeHtmlCal(habitacion.numero)}</div>
-                <span class="${claseEstadoBadgeRecurso(est)}">
-                    ${escapeHtmlCal(est)}
-                </span>
+                <div class="habitacion-numero">${escapeHtmlCal(habitacion.codigo || `Habitación ${habitacion.numero}`)}</div>
+                ${htmlEstadoHabitacionInventario(habitacion)}
             </div>
             <div class="habitacion-info">
+                <p><strong>Número:</strong> ${escapeHtmlCal(habitacion.numero)}</p>
+                <p><strong>Nombre:</strong> ${escapeHtmlCal(habitacion.nombre || '-')}</p>
                 <p><strong>Tipo:</strong> ${escapeHtmlCal(habitacion.tipo || 'N/A')}</p>
+                <p><strong>Piso / nivel:</strong> ${escapeHtmlCal(habitacion.piso || '-')}</p>
                 <p><strong>Tarifa / noche:</strong> ${escapeHtmlCal(precio)}</p>
                 <p><strong>Camas:</strong> ${escapeHtmlCal(String(habitacion.total_camas || 0))}</p>
             </div>
             <div class="habitacion-acciones">
+                <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarHabitacion(${habitacion.id})">✏️ Modificar</button>
                 <button class="btn-primary btn-small" onclick="gestionarCamas(${habitacion.id}, ${JSON.stringify(
                     habitacion.numero != null ? String(habitacion.numero) : ''
                 )})">
                     🛏️ Camas
-                </button>
-                <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarHabitacion(${habitacion.id})">✏️ Tarifa / datos</button>
-                <button class="btn-secondary btn-small" onclick="cambiarEstadoHabitacion(${habitacion.id}, ${JSON.stringify(est)})">
-                    ${est === 'Disponible' ? '🔒 Ocupar' : '🔓 Liberar'}
                 </button>
                 <button class="btn-danger btn-small" onclick="eliminarHabitacion(${habitacion.id})">
                     🗑️ Eliminar
@@ -1269,9 +2305,13 @@ function mostrarModalHabitacion() {
     document.getElementById('formHabitacion').reset();
     document.getElementById('idHabitacionEdicion').value = '';
     document.getElementById('tituloModalHabitacion').textContent = 'Nueva habitación';
+    const hint = document.getElementById('mensajeAyudaModalHabitacion');
+    if (hint) hint.hidden = true;
     const btn = document.getElementById('btnSubmitHabitacion');
     if (btn) btn.textContent = 'Guardar';
-    document.getElementById('precioHabitacion').value = '0';
+    document.getElementById('tipoHabitacion').value = 'Sencilla';
+    document.getElementById('estadoHabitacion').value = 'Disponible';
+    aplicarReglasSelectEstadoHabitacionModal(null);
     document.getElementById('modalHabitacion').classList.add('active');
 }
 
@@ -1279,11 +2319,18 @@ function mostrarModalEditarHabitacion(id) {
     const hab = habitaciones.find((x) => Number(x.id) === Number(id));
     if (!hab) return;
     document.getElementById('idHabitacionEdicion').value = String(hab.id);
-    document.getElementById('numeroHabitacion').value = hab.numero || '';
-    document.getElementById('tipoHabitacion').value = hab.tipo || '';
-    document.getElementById('precioHabitacion').value =
-        hab.precio_diario != null && Number(hab.precio_diario) > 0 ? String(hab.precio_diario) : '0';
-    document.getElementById('tituloModalHabitacion').textContent = 'Editar habitación';
+    document.getElementById('nombreHabitacion').value = etiquetaHabitacion(hab);
+    document.getElementById('tipoHabitacion').value = hab.tipo || 'Sencilla';
+    document.getElementById('pisoHabitacion').value = hab.piso != null ? String(hab.piso) : '';
+    document.getElementById('estadoHabitacion').value = hab.estado || 'Disponible';
+    aplicarReglasSelectEstadoHabitacionModal(hab);
+    document.getElementById('tituloModalHabitacion').textContent = 'Modificar habitación';
+    const hint = document.getElementById('mensajeAyudaModalHabitacion');
+    if (hint) {
+        hint.hidden = false;
+        hint.innerHTML =
+            'Puede cambiar nombre, tipo, piso y estado. Elija <strong>En limpieza</strong> o <strong>Fuera de servicio</strong> cuando corresponda. Ocupada y Reservada las asigna el sistema con las reservas. La tarifa por noche se define en <strong>Reservas</strong>.';
+    }
     const btn = document.getElementById('btnSubmitHabitacion');
     if (btn) btn.textContent = 'Guardar cambios';
     document.getElementById('modalHabitacion').classList.add('active');
@@ -1292,11 +2339,14 @@ function mostrarModalEditarHabitacion(id) {
 async function guardarHabitacion(event) {
     event.preventDefault();
     const idEd = document.getElementById('idHabitacionEdicion').value.trim();
-    const numero = document.getElementById('numeroHabitacion').value.trim();
+    const nombre = document.getElementById('nombreHabitacion').value.trim();
     const tipo = document.getElementById('tipoHabitacion').value.trim();
-    const precioRaw = document.getElementById('precioHabitacion').value;
-    const precio_diario =
-        precioRaw === '' || precioRaw == null ? 0 : Math.max(0, parseFloat(precioRaw) || 0);
+    const piso = document.getElementById('pisoHabitacion').value.trim();
+    const estado = document.getElementById('estadoHabitacion').value;
+    if (!nombre) {
+        alert('El nombre de la habitación es obligatorio');
+        return;
+    }
 
     try {
         let response;
@@ -1304,13 +2354,13 @@ async function guardarHabitacion(event) {
             response = await fetchWithAuth(`${API_URL}/habitaciones/${parseInt(idEd, 10)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ numero, tipo, precio_diario })
+                body: JSON.stringify({ nombre, tipo, piso, estado })
             });
         } else {
             response = await fetchWithAuth(`${API_URL}/habitaciones`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ numero, tipo, precio_diario })
+                body: JSON.stringify({ nombre, tipo, piso, estado })
             });
         }
 
@@ -1323,28 +2373,6 @@ async function guardarHabitacion(event) {
         }
     } catch (error) {
         alert('Error al guardar la habitación');
-        console.error(error);
-    }
-}
-
-async function cambiarEstadoHabitacion(id, estadoActual) {
-    const nuevoEstado = estadoActual === 'Disponible' ? 'Ocupada' : 'Disponible';
-    
-    try {
-        const response = await fetchWithAuth(`${API_URL}/habitaciones/${id}/estado`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: nuevoEstado })
-        });
-        
-        if (response.ok) {
-            cargarHabitaciones();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error al cambiar el estado');
         console.error(error);
     }
 }
@@ -1415,23 +2443,15 @@ function mostrarChinchorros() {
         if (tbody) {
             tbody.innerHTML = listaChinchorros
                 .map((c) => {
-                    const precio = formatoMoneda(Number(c.precio_diario) || 0);
-                    const est = c.estado || '';
-                    const estJson = JSON.stringify(est);
-                    const accionEstado =
-                        est === 'Disponible'
-                            ? '🔒 Marcar ocupado'
-                            : '🔓 Marcar libre';
                     return `
             <tr>
-                <td><strong>${escapeHtmlCal(c.codigo)}</strong></td>
-                <td>${escapeHtmlCal(c.zona || 'N/A')}</td>
-                <td>${escapeHtmlCal(precio)}</td>
+                <td><strong>${escapeHtmlCal(etiquetaChinchorro(c))}</strong></td>
+                <td>${escapeHtmlCal(c.tipo || 'N/A')}</td>
+                <td>${escapeHtmlCal(c.piso || '-')}</td>
                 <td>${escapeHtmlCal(String(c.reservas_activas ?? 0))}</td>
-                <td><span class="${claseEstadoBadgeRecurso(est)}">${escapeHtmlCal(est)}</span></td>
+                <td class="td-estado-inventario">${htmlEstadoChinchorroInventario(c)}</td>
                 <td class="td-acciones-inventario">
-                    <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarChinchorro(${c.id})">✏️ Tarifa / datos</button>
-                    <button type="button" class="btn-secondary btn-small" onclick="cambiarEstadoChinchorro(${c.id}, ${estJson})">${accionEstado}</button>
+                    <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarChinchorro(${c.id})">✏️ Modificar</button>
                     <button type="button" class="btn-danger btn-small" onclick="eliminarChinchorro(${c.id})">🗑️ Eliminar</button>
                 </td>
             </tr>`;
@@ -1447,23 +2467,18 @@ function mostrarChinchorros() {
     listaChinchorros.forEach((c) => {
         const card = document.createElement('div');
         card.className = 'habitacion-card';
-        const precio = formatoMoneda(Number(c.precio_diario) || 0);
-        const est = c.estado || '';
         card.innerHTML = `
             <div class="habitacion-header">
-                <div class="habitacion-numero">${escapeHtmlCal(c.codigo)}</div>
-                <span class="${claseEstadoBadgeRecurso(est)}">${escapeHtmlCal(est)}</span>
+                <div class="habitacion-numero">${escapeHtmlCal(etiquetaChinchorro(c))}</div>
+                ${htmlEstadoChinchorroInventario(c)}
             </div>
             <div class="habitacion-info">
-                <p><strong>Zona:</strong> ${escapeHtmlCal(c.zona || 'N/A')}</p>
-                <p><strong>Tarifa / día:</strong> ${escapeHtmlCal(precio)}</p>
+                <p><strong>Tipo:</strong> ${escapeHtmlCal(c.tipo || 'N/A')}</p>
+                <p><strong>Piso / nivel:</strong> ${escapeHtmlCal(c.piso || '-')}</p>
                 <p><strong>Reservas activas (hoy):</strong> ${escapeHtmlCal(String(c.reservas_activas ?? 0))}</p>
             </div>
             <div class="habitacion-acciones">
-                <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarChinchorro(${c.id})">✏️ Tarifa / datos</button>
-                <button type="button" class="btn-secondary btn-small" onclick="cambiarEstadoChinchorro(${c.id}, ${JSON.stringify(est)})">
-                    ${est === 'Disponible' ? '🔒 Marcar ocupado' : '🔓 Marcar libre'}
-                </button>
+                <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarChinchorro(${c.id})">✏️ Modificar</button>
                 <button type="button" class="btn-danger btn-small" onclick="eliminarChinchorro(${c.id})">🗑️ Eliminar</button>
             </div>
         `;
@@ -1475,10 +2490,13 @@ function mostrarModalChinchorro() {
     document.getElementById('formChinchorro').reset();
     document.getElementById('idChinchorroEdicion').value = '';
     document.getElementById('tituloModalChinchorro').textContent = 'Nuevo chinchorro';
-    document.getElementById('codigoChinchorro').removeAttribute('readonly');
+    const hint = document.getElementById('mensajeAyudaModalChinchorro');
+    if (hint) hint.hidden = true;
     const btn = document.getElementById('btnSubmitChinchorro');
     if (btn) btn.textContent = 'Guardar';
-    document.getElementById('precioChinchorro').value = '0';
+    document.getElementById('tipoChinchorro').value = 'Sencilla';
+    document.getElementById('estadoChinchorro').value = 'Disponible';
+    aplicarReglasSelectEstadoChinchorroModal(null);
     document.getElementById('modalChinchorro').classList.add('active');
 }
 
@@ -1486,12 +2504,18 @@ function mostrarModalEditarChinchorro(id) {
     const c = chinchorros.find((x) => Number(x.id) === Number(id));
     if (!c) return;
     document.getElementById('idChinchorroEdicion').value = String(c.id);
-    document.getElementById('codigoChinchorro').value = c.codigo || '';
-    document.getElementById('zonaChinchorro').value = c.zona || '';
-    document.getElementById('precioChinchorro').value =
-        c.precio_diario != null && Number(c.precio_diario) > 0 ? String(c.precio_diario) : '0';
-    document.getElementById('tituloModalChinchorro').textContent = 'Editar chinchorro';
-    document.getElementById('codigoChinchorro').setAttribute('readonly', 'readonly');
+    document.getElementById('nombreChinchorro').value = etiquetaChinchorro(c);
+    document.getElementById('tipoChinchorro').value = c.tipo || 'Sencilla';
+    document.getElementById('pisoChinchorro').value = c.piso != null ? String(c.piso) : '';
+    document.getElementById('estadoChinchorro').value = c.estado || 'Disponible';
+    aplicarReglasSelectEstadoChinchorroModal(c);
+    document.getElementById('tituloModalChinchorro').textContent = 'Modificar chinchorro';
+    const hint = document.getElementById('mensajeAyudaModalChinchorro');
+    if (hint) {
+        hint.hidden = false;
+        hint.innerHTML =
+            'Puede cambiar nombre, tipo, piso y estado. Elija <strong>En limpieza</strong> o <strong>Fuera de servicio</strong> cuando corresponda. Ocupada y Reservada las asigna el sistema con las reservas. La tarifa por día se define en <strong>Reservas</strong>.';
+    }
     const btn = document.getElementById('btnSubmitChinchorro');
     if (btn) btn.textContent = 'Guardar cambios';
     document.getElementById('modalChinchorro').classList.add('active');
@@ -1500,24 +2524,27 @@ function mostrarModalEditarChinchorro(id) {
 async function guardarChinchorro(event) {
     event.preventDefault();
     const idEd = document.getElementById('idChinchorroEdicion').value.trim();
-    const codigo = document.getElementById('codigoChinchorro').value.trim();
-    const zona = document.getElementById('zonaChinchorro').value.trim();
-    const precioRaw = document.getElementById('precioChinchorro').value;
-    const precio_diario =
-        precioRaw === '' || precioRaw == null ? 0 : Math.max(0, parseFloat(precioRaw) || 0);
+    const nombre = document.getElementById('nombreChinchorro').value.trim();
+    const tipo = document.getElementById('tipoChinchorro').value.trim();
+    const piso = document.getElementById('pisoChinchorro').value.trim();
+    const estado = document.getElementById('estadoChinchorro').value;
+    if (!nombre) {
+        alert('El nombre del chinchorro es obligatorio');
+        return;
+    }
     try {
         let response;
         if (idEd) {
             response = await fetchWithAuth(`${API_URL}/chinchorros/${parseInt(idEd, 10)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codigo, zona, precio_diario })
+                body: JSON.stringify({ nombre, tipo, piso, estado })
             });
         } else {
             response = await fetchWithAuth(`${API_URL}/chinchorros`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codigo, zona, precio_diario })
+                body: JSON.stringify({ nombre, tipo, piso, estado })
             });
         }
         if (response.ok) {
@@ -1529,26 +2556,6 @@ async function guardarChinchorro(event) {
         }
     } catch (error) {
         alert('Error al guardar el chinchorro');
-        console.error(error);
-    }
-}
-
-async function cambiarEstadoChinchorro(id, estadoActual) {
-    const nuevoEstado = estadoActual === 'Disponible' ? 'Ocupada' : 'Disponible';
-    try {
-        const response = await fetchWithAuth(`${API_URL}/chinchorros/${id}/estado`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: nuevoEstado })
-        });
-        if (response.ok) {
-            cargarChinchorros();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error al cambiar el estado');
         console.error(error);
     }
 }
@@ -1580,6 +2587,7 @@ async function cargarReservasChinchorros() {
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
         renderIndicadoresFinanciero();
+        renderIndicadoresDashboard();
     } catch (error) {
         console.error('Error al cargar reservas de chinchorros:', error);
     }
@@ -1590,12 +2598,12 @@ function mostrarReservasChinchorros() {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (reservasChinchorros.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 24px; color: #666;">No hay reservas de chinchorros.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 24px; color: #666;">No hay reservas de chinchorros.</td></tr>';
         return;
     }
     const lista = reservasChinchorrosFiltradas();
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
     lista.forEach((r) => {
@@ -1605,12 +2613,17 @@ function mostrarReservasChinchorros() {
         const estadoClass = r.estado === 'Activa' ? 'estado-disponible' : 'estado-ocupada';
         row.innerHTML = `
             <td>${r.id}</td>
-            <td><strong>${r.chinchorro_codigo}</strong></td>
+            <td><strong>${escapeHtmlCal(etiquetaChinchorroReserva(r))}</strong></td>
             <td>${r.huesped_nombre} ${r.huesped_apellido || ''}</td>
+            <td>${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}</td>
+            <td>${r.tipo_requerido || '-'}</td>
+            <td>${r.metodo_pago || '-'}</td>
             <td>${fi}</td>
             <td>${fs}</td>
             <td><span class="estado-badge ${estadoClass}">${r.estado}</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(Number(r.chinchorro_precio_diario) || 0))}</td>
             <td>${textoValorReservaChinchorro(r)}</td>
+            <td>${r.observaciones || '-'}</td>
             <td>
                 ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="modificarReservaChinchorro(${r.id})">✏️ Modificar</button>` : ''}
                 ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="cancelarReservaChinchorro(${r.id})">❌ Cancelar</button>` : ''}
@@ -1627,20 +2640,11 @@ function actualizarSelectsReservaChinchorro() {
     if (selC) {
         selC.innerHTML = '<option value="">Seleccionar</option>';
         chinchorros.forEach((c) => {
+            if (!inventarioPermiteNuevaReserva(c.estado)) return;
             const o = document.createElement('option');
             o.value = c.id;
-            const tarifa = formatoMoneda(Number(c.precio_diario) || 0);
-            o.textContent = `${c.codigo} · ${tarifa}/día · ${c.estado}`;
+            o.textContent = `${etiquetaChinchorro(c)} · ${c.estado || ''}`;
             selC.appendChild(o);
-        });
-    }
-    if (selH) {
-        selH.innerHTML = '<option value="">Seleccionar huésped</option>';
-        huespedes.forEach((h) => {
-            const o = document.createElement('option');
-            o.value = h.id;
-            o.textContent = `${h.nombre} ${h.apellido || ''}`.trim();
-            selH.appendChild(o);
         });
     }
 }
@@ -1652,6 +2656,16 @@ function mostrarModalElegirTipoReserva() {
 
 function elegirTipoReserva(tipo) {
     cerrarModal('modalElegirTipoReserva');
+    const pend = calendarioReservaPendiente;
+    calendarioReservaPendiente = null;
+    if (pend && pend.ingreso) {
+        if (tipo === 'habitacion') {
+            abrirReservaHabitacionDesdeCalendario(null, pend.ingreso);
+        } else if (tipo === 'chinchorro') {
+            abrirReservaChinchorroDesdeCalendario(null, pend.ingreso);
+        }
+        return;
+    }
     if (tipo === 'habitacion') {
         mostrarModalReserva();
     } else if (tipo === 'chinchorro') {
@@ -1659,12 +2673,19 @@ function elegirTipoReserva(tipo) {
     }
 }
 
-function mostrarModalReservaChinchorro() {
+async function mostrarModalReservaChinchorro() {
+    await asegurarHuespedesParaReserva();
     document.getElementById('formReservaChinchorro').reset();
     document.getElementById('idReservaChinchorroEdicion').value = '';
+    document.getElementById('reservaChinAdultos').value = '1';
+    document.getElementById('reservaChinNinos').value = '0';
+    document.getElementById('metodoPagoReservaChin').value = 'Efectivo';
+    document.getElementById('tarifaDiaReservaChin').value = '0';
+    document.getElementById('observacionesReservaChin').value = '';
     const titulo = document.getElementById('tituloModalReservaChin');
     if (titulo) titulo.textContent = 'Reservar chinchorro';
     actualizarSelectsReservaChinchorro();
+    limpiarComboboxHuesped('huespedReservaChin');
     const hoy = fechaLocalYMD();
     const fi = document.getElementById('fechaIngresoChin');
     const fs = document.getElementById('fechaSalidaChin');
@@ -1675,7 +2696,8 @@ function mostrarModalReservaChinchorro() {
     document.getElementById('modalReservaChinchorro').classList.add('active');
 }
 
-function modificarReservaChinchorro(id) {
+async function modificarReservaChinchorro(id) {
+    await asegurarHuespedesParaReserva();
     const r = reservasChinchorros.find((x) => Number(x.id) === Number(id));
     if (!r) {
         alert('No se encontró la reserva.');
@@ -1690,8 +2712,24 @@ function modificarReservaChinchorro(id) {
     if (titulo) titulo.textContent = 'Modificar reserva de chinchorro';
     actualizarSelectsReservaChinchorro();
     requestAnimationFrame(() => {
-        document.getElementById('chinchorroReserva').value = String(r.chinchorro_id);
-        document.getElementById('huespedReservaChin').value = String(r.huesped_id);
+        const selCh = document.getElementById('chinchorroReserva');
+        const labelCh =
+            (r.chinchorro_nombre && String(r.chinchorro_nombre).trim()) ||
+            (r.chinchorro_codigo && String(r.chinchorro_codigo).trim()) ||
+            `Chinchorro #${r.chinchorro_id}`;
+        asegurarOpcionEnSelect(selCh, r.chinchorro_id, labelCh);
+        const labelHue = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim();
+        establecerComboboxHuesped('huespedReservaChin', r.huesped_id, labelHue || undefined);
+        document.getElementById('reservaChinAdultos').value = String(Number(r.adultos || 1));
+        document.getElementById('reservaChinNinos').value = String(Number(r.ninos || 0));
+        document.getElementById('tipoRequeridoChin').value = r.tipo_requerido || '';
+        document.getElementById('metodoPagoReservaChin').value = r.metodo_pago || 'Efectivo';
+        const tarifa =
+            r.reserva_tarifa_dia != null && Number(r.reserva_tarifa_dia) > 0
+                ? Number(r.reserva_tarifa_dia)
+                : Number(r.chinchorro_precio_diario) || 0;
+        document.getElementById('tarifaDiaReservaChin').value = String(tarifa);
+        document.getElementById('observacionesReservaChin').value = r.observaciones || '';
         const fi = String(r.fecha_ingreso).slice(0, 10);
         const fs = String(r.fecha_salida).slice(0, 10);
         const fiEl = document.getElementById('fechaIngresoChin');
@@ -1714,10 +2752,38 @@ async function guardarReservaChinchorro(event) {
     const idEd = document.getElementById('idReservaChinchorroEdicion').value.trim();
     const chinchorro_id = parseInt(document.getElementById('chinchorroReserva').value, 10);
     const huesped_id = parseInt(document.getElementById('huespedReservaChin').value, 10);
+    const adultos = Math.max(1, parseInt(document.getElementById('reservaChinAdultos').value, 10) || 1);
+    const ninos = Math.max(0, parseInt(document.getElementById('reservaChinNinos').value, 10) || 0);
+    const tipo_requerido = document.getElementById('tipoRequeridoChin').value.trim();
+    const metodo_pago = document.getElementById('metodoPagoReservaChin').value;
+    const observaciones = document.getElementById('observacionesReservaChin').value.trim();
     const fecha_ingreso = document.getElementById('fechaIngresoChin').value;
     const fecha_salida = document.getElementById('fechaSalidaChin').value;
-    if (!Number.isFinite(chinchorro_id) || !Number.isFinite(huesped_id)) {
-        alert('Seleccione chinchorro y huésped');
+    const tarifaRaw = document.getElementById('tarifaDiaReservaChin').value;
+    const tarifa_dia =
+        tarifaRaw === '' || tarifaRaw == null ? 0 : Math.max(0, parseFloat(tarifaRaw) || 0);
+    if (!Number.isFinite(chinchorro_id)) {
+        alert('Seleccione un chinchorro');
+        return;
+    }
+    const chSel = chinchorros.find((x) => Number(x.id) === chinchorro_id);
+    const idReservaChActual = idEd ? parseInt(idEd, 10) : null;
+    const reservaChActual =
+        idReservaChActual != null
+            ? reservasChinchorros.find((x) => Number(x.id) === idReservaChActual)
+            : null;
+    const mismoChinchorro =
+        reservaChActual && Number(reservaChActual.chinchorro_id) === chinchorro_id;
+    if (chSel && !inventarioPermiteNuevaReserva(chSel.estado) && !mismoChinchorro) {
+        alert(mensajeInventarioNoReservableUI(chSel.estado, 'chinchorro'));
+        return;
+    }
+    if (!Number.isFinite(huesped_id)) {
+        alert('Busque y seleccione un huésped de la lista');
+        return;
+    }
+    if (tarifa_dia <= 0) {
+        alert('Indique la tarifa por día de la reserva');
         return;
     }
     if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
@@ -1730,19 +2796,20 @@ async function guardarReservaChinchorro(event) {
             response = await fetchWithAuth(`${API_URL}/reservas-chinchorros/${parseInt(idEd, 10)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chinchorro_id, huesped_id, fecha_ingreso, fecha_salida })
+                body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia })
             });
         } else {
             response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chinchorro_id, huesped_id, fecha_ingreso, fecha_salida })
+                body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia })
             });
         }
         if (response.ok) {
             cerrarModal('modalReservaChinchorro');
             cargarReservasChinchorros();
             cargarChinchorros();
+            actualizarCalendarioDisponibilidad();
         } else {
             const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo guardar.');
             alert('Error: ' + msg);
@@ -1764,6 +2831,7 @@ async function cancelarReservaChinchorro(id) {
         if (response.ok) {
             cargarReservasChinchorros();
             cargarChinchorros();
+            actualizarCalendarioDisponibilidad();
         } else {
             const error = await response.json();
             alert('Error: ' + error.error);
@@ -1894,13 +2962,13 @@ function mostrarHuespedes() {
     tbody.innerHTML = '';
     
     if (huespedes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">No hay huéspedes registrados.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #666;">No hay huéspedes registrados.</td></tr>';
         return;
     }
 
     const lista = huespedesFiltrados();
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
 
@@ -1912,6 +2980,7 @@ function mostrarHuespedes() {
             <td>${huesped.apellido || '-'}</td>
             <td>${huesped.email || '-'}</td>
             <td>${huesped.telefono || '-'}</td>
+            <td>${huesped.tipo_documento || '-'}</td>
             <td>${huesped.documento || '-'}</td>
             <td>
                 <button type="button" class="btn-secondary btn-small" onclick="modificarHuesped(${huesped.id})">✏️ Modificar</button>
@@ -1943,6 +3012,7 @@ function modificarHuesped(id) {
     document.getElementById('apellidoHuesped').value = h.apellido || '';
     document.getElementById('emailHuesped').value = h.email || '';
     document.getElementById('telefonoHuesped').value = h.telefono || '';
+    document.getElementById('tipoDocumentoHuesped').value = h.tipo_documento || 'Cédula';
     document.getElementById('documentoHuesped').value = h.documento || '';
     document.getElementById('tituloModalHuesped').textContent = 'Modificar huésped';
     const btn = document.getElementById('btnSubmitHuesped');
@@ -1963,6 +3033,7 @@ async function guardarHuesped(event) {
     const apellido = document.getElementById('apellidoHuesped').value.trim();
     const email = document.getElementById('emailHuesped').value.trim();
     const telefono = document.getElementById('telefonoHuesped').value.trim();
+    const tipo_documento = document.getElementById('tipoDocumentoHuesped').value.trim();
     const documento = document.getElementById('documentoHuesped').value.trim();
 
     if (!nombre) {
@@ -1986,13 +3057,13 @@ async function guardarHuesped(event) {
             response = await fetchWithAuth(`${API_URL}/huespedes/${idNum}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre, apellido, email, telefono, documento })
+                body: JSON.stringify({ nombre, apellido, email, telefono, tipo_documento, documento })
             });
         } else {
             response = await fetchWithAuth(`${API_URL}/huespedes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre, apellido, email, telefono, documento })
+                body: JSON.stringify({ nombre, apellido, email, telefono, tipo_documento, documento })
             });
         }
 
@@ -2082,6 +3153,7 @@ async function cargarReservas() {
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
         renderIndicadoresFinanciero();
+        renderIndicadoresDashboard();
     } catch (error) {
         console.error('Error al cargar reservas:', error);
     }
@@ -2093,13 +3165,13 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
     tbody.innerHTML = '';
     
     if (reservas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #666;">No hay reservas registradas.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px; color: #666;">No hay reservas registradas.</td></tr>';
         return;
     }
 
     const lista = reservasHabitacionesFiltradas();
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
 
@@ -2111,12 +3183,17 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
         
         row.innerHTML = `
             <td>${reserva.id}</td>
-            <td><strong>${reserva.habitacion_numero}</strong></td>
+            <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(reserva))}</strong></td>
             <td>${reserva.huesped_nombre} ${reserva.huesped_apellido || ''}</td>
+            <td>${Number(reserva.adultos || 1)} / ${Number(reserva.ninos || 0)}</td>
+            <td>${reserva.tipo_habitacion_requerida || '-'}</td>
+            <td>${reserva.metodo_pago || '-'}</td>
             <td>${fechaIngreso}</td>
             <td>${fechaSalida}</td>
             <td><span class="estado-badge ${estadoClass}">${reserva.estado}</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(Number(reserva.habitacion_precio_diario) || 0))}</td>
             <td>${textoValorReservaHabitacion(reserva)}</td>
+            <td>${reserva.observaciones || '-'}</td>
             <td>
                 <button type="button" class="btn-secondary btn-small" onclick="modificarReserva(${reserva.id})">✏️ Modificar</button>
                 ${reserva.estado === 'Activa' ?
@@ -2131,29 +3208,32 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
 }
 
 function actualizarSelectsReserva() {
-    // Actualizar select de habitaciones
     const selectHabitacion = document.getElementById('habitacionReserva');
+    if (!selectHabitacion) return;
     selectHabitacion.innerHTML = '<option value="">Seleccionar habitación</option>';
-    habitaciones.forEach(hab => {
+    habitaciones.forEach((hab) => {
+        if (!inventarioPermiteNuevaReserva(hab.estado)) return;
         const option = document.createElement('option');
         option.value = hab.id;
-        const tarifa = formatoMoneda(Number(hab.precio_diario) || 0);
-        option.textContent = `Hab. ${hab.numero} · ${tarifa}/noche · ${hab.estado}`;
+        option.textContent = `${etiquetaHabitacion(hab)} · ${hab.estado || ''}`;
         selectHabitacion.appendChild(option);
-    });
-    
-    // Actualizar select de huéspedes
-    const selectHuesped = document.getElementById('huespedReserva');
-    selectHuesped.innerHTML = '<option value="">Seleccionar huésped</option>';
-    huespedes.forEach(huesped => {
-        const option = document.createElement('option');
-        option.value = huesped.id;
-        option.textContent = `${huesped.nombre} ${huesped.apellido || ''}`.trim();
-        selectHuesped.appendChild(option);
     });
 }
 
 /** Asegura que exista la opción antes de asignar value (evita selects vacíos tras repoblar). */
+function establecerTipoHabitacionRequerida(valor) {
+    const sel = document.getElementById('tipoHabitacionRequerida');
+    if (!sel) return;
+    const v = valor != null ? String(valor).trim() : '';
+    if (v && !Array.from(sel.options).some((o) => o.value === v)) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+    }
+    sel.value = v;
+}
+
 function asegurarOpcionEnSelect(selectEl, valor, textoMostrar) {
     if (!selectEl || valor === undefined || valor === null) {
         return;
@@ -2180,17 +3260,24 @@ function establecerModoModalReserva(esEdicion) {
     }
 }
 
-function mostrarModalReserva() {
+async function mostrarModalReserva() {
+    await asegurarHuespedesParaReserva();
     document.getElementById('formReserva').reset();
     document.getElementById('idReservaEdicion').value = '';
     document.getElementById('tituloModalReserva').textContent = 'Nueva Reserva';
+    document.getElementById('reservaAdultos').value = '1';
+    document.getElementById('reservaNinos').value = '0';
+    document.getElementById('metodoPagoReserva').value = 'Efectivo';
+    document.getElementById('tarifaNocheReserva').value = '0';
+    document.getElementById('observacionesReserva').value = '';
     establecerModoModalReserva(false);
     actualizarSelectsReserva();
     aplicarFechasMinNuevaReservaHabitacion();
     document.getElementById('modalReserva').classList.add('active');
 }
 
-function modificarReserva(id) {
+async function modificarReserva(id) {
+    await asegurarHuespedesParaReserva();
     const r = reservas.find((x) => Number(x.id) === Number(id));
     if (!r) {
         alert('No se encontró esa reserva en la lista. Abra la pestaña Reservas o recargue la página.');
@@ -2210,12 +3297,22 @@ function modificarReserva(id) {
     const aplicarValoresModalEdicion = () => {
         document.getElementById('idReservaEdicion').value = String(r.id);
         const selHab = document.getElementById('habitacionReserva');
-        const selHue = document.getElementById('huespedReserva');
         const labelHab =
-            r.habitacion_numero != null ? `Habitación ${r.habitacion_numero}` : null;
+            (r.habitacion_nombre && String(r.habitacion_nombre).trim()) ||
+            (r.habitacion_numero != null ? `Habitación ${r.habitacion_numero}` : null);
         const labelHue = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim();
         asegurarOpcionEnSelect(selHab, r.habitacion_id, labelHab);
-        asegurarOpcionEnSelect(selHue, r.huesped_id, labelHue || undefined);
+        establecerComboboxHuesped('huespedReserva', r.huesped_id, labelHue || undefined);
+        document.getElementById('reservaAdultos').value = String(Number(r.adultos || 1));
+        document.getElementById('reservaNinos').value = String(Number(r.ninos || 0));
+        establecerTipoHabitacionRequerida(r.tipo_habitacion_requerida);
+        document.getElementById('metodoPagoReserva').value = r.metodo_pago || 'Efectivo';
+        const tarifa =
+            r.reserva_tarifa_noche != null && Number(r.reserva_tarifa_noche) > 0
+                ? Number(r.reserva_tarifa_noche)
+                : Number(r.habitacion_precio_diario) || 0;
+        document.getElementById('tarifaNocheReserva').value = String(tarifa);
+        document.getElementById('observacionesReserva').value = r.observaciones || '';
         const fi = String(r.fecha_ingreso).slice(0, 10);
         const fs = String(r.fecha_salida).slice(0, 10);
         document.getElementById('fechaIngreso').value = fi;
@@ -2237,11 +3334,38 @@ async function guardarReserva(event) {
     const idEdicion = document.getElementById('idReservaEdicion').value.trim();
     const habitacion_id = parseInt(document.getElementById('habitacionReserva').value, 10);
     const huesped_id = parseInt(document.getElementById('huespedReserva').value, 10);
+    const adultos = Math.max(1, parseInt(document.getElementById('reservaAdultos').value, 10) || 1);
+    const ninos = Math.max(0, parseInt(document.getElementById('reservaNinos').value, 10) || 0);
+    const tipo_habitacion_requerida = document.getElementById('tipoHabitacionRequerida').value.trim();
+    const metodo_pago = document.getElementById('metodoPagoReserva').value;
+    const observaciones = document.getElementById('observacionesReserva').value.trim();
     const fecha_ingreso = document.getElementById('fechaIngreso').value;
     const fecha_salida = document.getElementById('fechaSalida').value;
+    const tarifaRaw = document.getElementById('tarifaNocheReserva').value;
+    const tarifa_noche =
+        tarifaRaw === '' || tarifaRaw == null ? 0 : Math.max(0, parseFloat(tarifaRaw) || 0);
 
-    if (!Number.isFinite(habitacion_id) || !Number.isFinite(huesped_id)) {
-        alert('Seleccione habitación y huésped');
+    if (!Number.isFinite(habitacion_id)) {
+        alert('Seleccione una habitación');
+        return;
+    }
+    const habSel = habitaciones.find((x) => Number(x.id) === habitacion_id);
+    const idReservaActual = idEdicion ? parseInt(idEdicion, 10) : null;
+    const reservaActual =
+        idReservaActual != null ? reservas.find((x) => Number(x.id) === idReservaActual) : null;
+    const mismaHabitacion =
+        reservaActual && Number(reservaActual.habitacion_id) === habitacion_id;
+    if (habSel && !inventarioPermiteNuevaReserva(hab.estado) && !mismaHabitacion) {
+        alert(mensajeInventarioNoReservableUI(hab.estado, 'habitacion'));
+        return;
+    }
+    if (!Number.isFinite(huesped_id)) {
+        alert('Busque y seleccione un huésped de la lista');
+        return;
+    }
+
+    if (tarifa_noche <= 0) {
+        alert('Indique la tarifa por noche de la reserva');
         return;
     }
 
@@ -2257,13 +3381,13 @@ async function guardarReserva(event) {
             response = await fetchWithAuth(`${API_URL}/reservas/${idNum}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ habitacion_id, huesped_id, fecha_ingreso, fecha_salida })
+                body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche })
             });
         } else {
             response = await fetchWithAuth(`${API_URL}/reservas`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ habitacion_id, huesped_id, fecha_ingreso, fecha_salida })
+                body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche })
             });
         }
 
@@ -2271,6 +3395,7 @@ async function guardarReserva(event) {
             cerrarModal('modalReserva');
             cargarReservas();
             cargarHabitaciones();
+            actualizarCalendarioDisponibilidad();
             if (idEdicion) {
                 alert('Cambios guardados correctamente.');
             }
@@ -2298,6 +3423,7 @@ async function finalizarReservaSalida(id) {
         if (response.ok) {
             cargarReservas();
             cargarHabitaciones();
+            actualizarCalendarioDisponibilidad();
         } else {
             const err = await response.json().catch(() => ({}));
             alert('Error: ' + (err.error || response.status));
@@ -2321,6 +3447,7 @@ async function finalizarReservaChinchorroSalida(id) {
         if (response.ok) {
             cargarReservasChinchorros();
             cargarChinchorros();
+            actualizarCalendarioDisponibilidad();
         } else {
             const err = await response.json().catch(() => ({}));
             alert('Error: ' + (err.error || response.status));
@@ -2346,6 +3473,7 @@ async function cancelarReserva(id) {
         if (response.ok) {
             cargarReservas();
             cargarHabitaciones();
+            actualizarCalendarioDisponibilidad();
         } else {
             const error = await response.json();
             alert('Error: ' + error.error);
@@ -2684,8 +3812,6 @@ function cerrarModal(modalId) {
         if (t) t.textContent = 'Nuevo chinchorro';
         const b = document.getElementById('btnSubmitChinchorro');
         if (b) b.textContent = 'Guardar';
-        const cod = document.getElementById('codigoChinchorro');
-        if (cod) cod.removeAttribute('readonly');
     }
     if (modalId === 'modalReservaChinchorro') {
         document.getElementById('idReservaChinchorroEdicion').value = '';

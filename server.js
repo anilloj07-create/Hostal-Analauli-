@@ -620,6 +620,106 @@ function parsePrecioDiario(body) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function parseTarifaNoche(body) {
+  const v = body && (body.tarifa_noche != null ? body.tarifa_noche : body.precio_diario);
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** Número interno obligatorio en BD; el formulario no lo pide — se conserva o se genera. */
+function numeroHabitacionInventario(hab, id, nombreSeguro) {
+  const candidatos = [
+    hab && hab.numero,
+    hab && hab.codigo,
+    nombreSeguro,
+    id != null ? `HAB-${id}` : null
+  ];
+  for (const c of candidatos) {
+    const s = c != null ? String(c).trim() : '';
+    if (s) return s;
+  }
+  return 'HAB-1';
+}
+
+function numeroChinchorroInventario(ch, id, nombreSeguro) {
+  const candidatos = [
+    ch && ch.numero,
+    ch && ch.codigo,
+    nombreSeguro,
+    id != null ? `CH-${id}` : null
+  ];
+  for (const c of candidatos) {
+    const s = c != null ? String(c).trim() : '';
+    if (s) return s;
+  }
+  return 'CH-1';
+}
+
+function generarIdentificadoresHabitacion(nombre, callback) {
+  const nom = String(nombre || '').trim();
+  if (!nom) {
+    return callback(new Error('El nombre de la habitación es requerido'));
+  }
+  db.db.get('SELECT MAX(id) as maxId FROM habitaciones', (err, row) => {
+    if (err) return callback(err);
+    const next = (row && row.maxId ? Number(row.maxId) : 0) + 1;
+    const codigo = `HAB-${next}`;
+    const numero = `HAB-${next}`;
+    callback(null, codigo, numero, nom);
+  });
+}
+
+function parseTarifaDia(body) {
+  const v = body && (body.tarifa_dia != null ? body.tarifa_dia : body.precio_diario);
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** Estado al guardar desde Modificar: permite limpieza y fuera de servicio; no devuelve error por Ocupada/Reservada. */
+function resolverEstadoInventarioModificar(habActual, estadoSolicitado, conReservaHoy) {
+  const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
+  const est = estadosValidos.includes(String(estadoSolicitado)) ? String(estadoSolicitado) : 'Disponible';
+  const manual = ['Disponible', 'En limpieza', 'Fuera de servicio'];
+  if (manual.includes(est)) {
+    if (conReservaHoy && est === 'Disponible') {
+      return 'Ocupada';
+    }
+    return est;
+  }
+  if (est === 'Ocupada' || est === 'Reservada') {
+    if (conReservaHoy) return 'Ocupada';
+    return String((habActual && habActual.estado) || 'Disponible');
+  }
+  return 'Disponible';
+}
+
+function generarIdentificadoresChinchorro(nombre, callback) {
+  const nom = String(nombre || '').trim();
+  if (!nom) {
+    return callback(new Error('El nombre del chinchorro es requerido'));
+  }
+  db.db.get('SELECT MAX(id) as maxId FROM chinchorros', (err, row) => {
+    if (err) return callback(err);
+    const next = (row && row.maxId ? Number(row.maxId) : 0) + 1;
+    const codigo = `CH-${next}`;
+    const numero = `CH-${next}`;
+    callback(null, codigo, numero, nom);
+  });
+}
+
+// ========== INVENTARIO (sincronización con reservas) ==========
+app.post('/api/inventario/sincronizar-estados', requireAuth, (req, res) => {
+  db.sincronizarTodosEstadosInventario((err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ message: 'Estados de habitaciones y chinchorros sincronizados con reservas activas' });
+    }
+  });
+});
+
 // ========== RUTAS DE HABITACIONES ==========
 app.get('/api/habitaciones', requireAuth, (req, res) => {
   db.getAllHabitaciones((err, habitaciones) => {
@@ -632,49 +732,128 @@ app.get('/api/habitaciones', requireAuth, (req, res) => {
 });
 
 app.post('/api/habitaciones', requireAuth, (req, res) => {
-  const { numero, tipo } = req.body;
-  if (!numero) {
-    return res.status(400).json({ error: 'El número de habitación es requerido' });
-  }
-  db.createHabitacion(numero, tipo || 'Estándar', parsePrecioDiario(req.body), (err, habitacion) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.status(201).json(habitacion);
+  const { nombre, tipo, piso, estado } = req.body;
+  const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
+  const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  generarIdentificadoresHabitacion(nombre, (errId, codigo, numero, nombreSeguro) => {
+    if (errId) {
+      return res.status(400).json({ error: errId.message });
     }
+    db.createHabitacion(
+      codigo,
+      numero,
+      nombreSeguro,
+      tipo || 'Sencilla',
+      piso ? String(piso).trim() : '',
+      estadoSeguro,
+      0,
+      (err, habitacion) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+        } else {
+          res.status(201).json(habitacion);
+        }
+      }
+    );
   });
 });
 
 app.put('/api/habitaciones/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { numero, tipo } = req.body;
+  const { nombre, tipo, piso, estado } = req.body;
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
-  if (!numero || !String(numero).trim()) {
-    return res.status(400).json({ error: 'El número de habitación es requerido' });
+  const nombreSeguro = nombre != null ? String(nombre).trim() : '';
+  if (!nombreSeguro) {
+    return res.status(400).json({ error: 'El nombre de la habitación es requerido' });
   }
-  db.updateHabitacionDatos(id, String(numero).trim(), tipo || 'Estándar', parsePrecioDiario(req.body), (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.json({ message: 'Habitación actualizada', id });
+  const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
+  const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  db.habitacionTieneReservaActivaHoy(id, (errRes, conReserva) => {
+    if (errRes) {
+      return res.status(500).json({ error: errRes.message });
     }
+    db.getHabitacionById(id, (errHab, hab) => {
+      if (errHab) {
+        return res.status(500).json({ error: errHab.message });
+      }
+      if (!hab) {
+        return res.status(404).json({ error: 'Habitación no encontrada' });
+      }
+      const estadoFinal = resolverEstadoInventarioModificar(hab, estadoSeguro, conReserva);
+      const codigo = (hab.codigo && String(hab.codigo).trim()) || `HAB-${id}`;
+      const numero = numeroHabitacionInventario(hab, id, nombreSeguro);
+      const precio = hab.precio_diario != null ? Number(hab.precio_diario) : 0;
+      db.updateHabitacionDatos(
+        id,
+        codigo,
+        numero,
+        nombreSeguro,
+        tipo || 'Sencilla',
+        piso ? String(piso).trim() : '',
+        estadoFinal,
+        precio,
+        (err) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+          } else {
+            res.json({ message: 'Habitación actualizada', id });
+          }
+        }
+      );
+    });
   });
 });
 
 app.put('/api/habitaciones/:id/estado', requireAuth, (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
   const { estado } = req.body;
-  if (!estado || !['Disponible', 'Ocupada'].includes(estado)) {
-    return res.status(400).json({ error: 'Estado inválido' });
+  const estadosPermitidosListado = ['Disponible', 'En limpieza'];
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
   }
-  db.updateHabitacionEstado(id, estado, (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.json({ message: 'Estado actualizado' });
+  if (!estado || !estadosPermitidosListado.includes(estado)) {
+    return res.status(400).json({
+      error:
+        'Desde el listado solo puede elegir Disponible o En limpieza. Ocupada y Reservada las define una reserva; Fuera de servicio se cambia en Modificar.'
+    });
+  }
+  db.habitacionTieneReservaActivaHoy(id, (errRes, conReserva) => {
+    if (errRes) {
+      return res.status(500).json({ error: errRes.message });
     }
+    if (conReserva) {
+      return res.status(403).json({
+        error: 'La habitación está ocupada por una reserva activa. Finalice o modifique la reserva para cambiar el estado.'
+      });
+    }
+    db.getHabitacionById(id, (errHab, hab) => {
+      if (errHab) {
+        return res.status(500).json({ error: errHab.message });
+      }
+      if (!hab) {
+        return res.status(404).json({ error: 'Habitación no encontrada' });
+      }
+      const estActual = String(hab.estado || '');
+      if (estActual === 'Fuera de servicio') {
+        return res.status(403).json({
+          error: 'La habitación está fuera de servicio. Use Modificar para rehabilitarla.'
+        });
+      }
+      if (estActual === 'Ocupada' || estActual === 'Reservada') {
+        return res.status(403).json({
+          error: `No puede cambiar el estado "${estActual}" desde el listado. Use Modificar o gestione la reserva.`
+        });
+      }
+      db.updateHabitacionEstado(id, estado, (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+        } else {
+          res.json({ message: 'Estado actualizado' });
+        }
+      });
+    });
   });
 });
 
@@ -739,17 +918,25 @@ app.get('/api/huespedes', requireAuth, (req, res) => {
 });
 
 app.post('/api/huespedes', requireAuth, (req, res) => {
-  const { nombre, apellido, email, telefono, documento } = req.body;
+  const { nombre, apellido, email, telefono, tipo_documento, documento } = req.body;
   if (!nombre) {
     return res.status(400).json({ error: 'El nombre es requerido' });
   }
-  db.createHuesped(nombre, apellido || '', email || '', telefono || '', documento || '', (err, huesped) => {
+  db.createHuesped(
+    nombre,
+    apellido || '',
+    email || '',
+    telefono || '',
+    tipo_documento || 'Cédula',
+    documento || '',
+    (err, huesped) => {
     if (err) {
       res.status(500).json({ error: err.message });
     } else {
       res.status(201).json(huesped);
     }
-  });
+    }
+  );
 });
 
 app.put('/api/huespedes/:id', requireAuth, (req, res) => {
@@ -760,7 +947,7 @@ app.put('/api/huespedes/:id', requireAuth, (req, res) => {
   if (!req.body || typeof req.body !== 'object') {
     return res.status(400).json({ error: 'Cuerpo de la petición inválido' });
   }
-  const { nombre, apellido, email, telefono, documento } = req.body;
+  const { nombre, apellido, email, telefono, tipo_documento, documento } = req.body;
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El nombre es requerido' });
   }
@@ -777,6 +964,7 @@ app.put('/api/huespedes/:id', requireAuth, (req, res) => {
       apellido != null ? String(apellido).trim() : '',
       email != null ? String(email).trim() : '',
       telefono != null ? String(telefono).trim() : '',
+      tipo_documento != null ? String(tipo_documento).trim() : 'Cédula',
       documento != null ? String(documento).trim() : '',
       (err2) => {
         if (err2) {
@@ -811,37 +999,70 @@ app.get('/api/reservas', requireAuth, (req, res) => {
 });
 
 app.post('/api/reservas', requireAuth, (req, res) => {
-  const { habitacion_id, huesped_id, fecha_ingreso, fecha_salida } = req.body;
+  const { habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida } = req.body;
   if (!habitacion_id || !huesped_id || !fecha_ingreso || !fecha_salida) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
+  const adultosNum = Math.max(1, parseInt(adultos, 10) || 1);
+  const ninosNum = Math.max(0, parseInt(ninos, 10) || 0);
+  const metodosPagoValidos = ['Efectivo', 'Tarjeta', 'Transferencia'];
+  const metodoPagoSeguro = metodosPagoValidos.includes(String(metodo_pago)) ? String(metodo_pago) : 'Efectivo';
+  const tarifaNoche = parseTarifaNoche(req.body);
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de salida debe ser posterior a la de ingreso' });
   }
-  db.createReserva(habitacion_id, huesped_id, fecha_ingreso, fecha_salida, (err, reserva) => {
+  db.createReserva(
+    habitacion_id,
+    huesped_id,
+    adultosNum,
+    ninosNum,
+    tipo_habitacion_requerida != null ? String(tipo_habitacion_requerida).trim() : '',
+    metodoPagoSeguro,
+    observaciones != null ? String(observaciones).trim() : '',
+    fecha_ingreso,
+    fecha_salida,
+    tarifaNoche,
+    (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });
     } else {
       res.status(201).json(reserva);
     }
-  });
+    }
+  );
 });
 
 app.put('/api/reservas/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { habitacion_id, huesped_id, fecha_ingreso, fecha_salida } = req.body;
+  const { habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida } = req.body;
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
   const hid = parseInt(habitacion_id, 10);
   const gid = parseInt(huesped_id, 10);
+  const adultosNum = Math.max(1, parseInt(adultos, 10) || 1);
+  const ninosNum = Math.max(0, parseInt(ninos, 10) || 0);
+  const metodosPagoValidos = ['Efectivo', 'Tarjeta', 'Transferencia'];
+  const metodoPagoSeguro = metodosPagoValidos.includes(String(metodo_pago)) ? String(metodo_pago) : 'Efectivo';
   if (!Number.isFinite(hid) || hid < 1 || !Number.isFinite(gid) || gid < 1 || !fecha_ingreso || !fecha_salida) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de salida debe ser posterior a la de ingreso' });
   }
-  db.updateReservaDatos(id, hid, gid, fecha_ingreso, fecha_salida, (err) => {
+  db.updateReservaDatos(
+    id,
+    hid,
+    gid,
+    adultosNum,
+    ninosNum,
+    tipo_habitacion_requerida != null ? String(tipo_habitacion_requerida).trim() : '',
+    metodoPagoSeguro,
+    observaciones != null ? String(observaciones).trim() : '',
+    fecha_ingreso,
+    fecha_salida,
+    parseTarifaNoche(req.body),
+    (err) => {
     if (err) {
       if (String(err.message).includes('no encontrada')) {
         return res.status(404).json({ error: err.message });
@@ -852,7 +1073,8 @@ app.put('/api/reservas/:id', requireAuth, (req, res) => {
       return res.status(500).json({ error: err.message });
     }
     res.json({ message: 'Reserva actualizada', id });
-  });
+    }
+  );
 });
 
 app.put('/api/reservas/:id/estado', requireAuth, (req, res) => {
@@ -893,55 +1115,128 @@ app.get('/api/chinchorros', requireAuth, (req, res) => {
 });
 
 app.post('/api/chinchorros', requireAuth, (req, res) => {
-  const { codigo, zona } = req.body;
-  if (!codigo || !String(codigo).trim()) {
-    return res.status(400).json({ error: 'El código del chinchorro es requerido' });
-  }
-  db.createChinchorro(String(codigo).trim(), zona ? String(zona).trim() : '', parsePrecioDiario(req.body), (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.status(201).json(row);
+  const { nombre, tipo, piso, estado } = req.body;
+  const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
+  const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  generarIdentificadoresChinchorro(nombre, (errId, codigo, numero, nombreSeguro) => {
+    if (errId) {
+      return res.status(400).json({ error: errId.message });
     }
+    db.createChinchorro(
+      codigo,
+      numero,
+      nombreSeguro,
+      tipo || 'Sencilla',
+      piso ? String(piso).trim() : '',
+      estadoSeguro,
+      0,
+      (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+        } else {
+          res.status(201).json(row);
+        }
+      }
+    );
   });
 });
 
 app.put('/api/chinchorros/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { codigo, zona } = req.body;
+  const { nombre, tipo, piso, estado } = req.body;
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
-  if (!codigo || !String(codigo).trim()) {
-    return res.status(400).json({ error: 'El código del chinchorro es requerido' });
+  const nombreSeguro = nombre != null ? String(nombre).trim() : '';
+  if (!nombreSeguro) {
+    return res.status(400).json({ error: 'El nombre del chinchorro es requerido' });
   }
-  db.updateChinchorroDatos(
-    id,
-    String(codigo).trim(),
-    zona ? String(zona).trim() : '',
-    parsePrecioDiario(req.body),
-    (err) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-      } else {
-        res.json({ message: 'Chinchorro actualizado', id });
-      }
+  const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
+  const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  db.chinchorroTieneReservaActivaHoy(id, (errRes, conReserva) => {
+    if (errRes) {
+      return res.status(500).json({ error: errRes.message });
     }
-  );
+    db.getChinchorroById(id, (errCh, ch) => {
+      if (errCh) {
+        return res.status(500).json({ error: errCh.message });
+      }
+      if (!ch) {
+        return res.status(404).json({ error: 'Chinchorro no encontrado' });
+      }
+      const estadoFinal = resolverEstadoInventarioModificar(ch, estadoSeguro, conReserva);
+      const codigo = (ch.codigo && String(ch.codigo).trim()) || `CH-${id}`;
+      const numero = numeroChinchorroInventario(ch, id, nombreSeguro);
+      const precio = ch.precio_diario != null ? Number(ch.precio_diario) : 0;
+      db.updateChinchorroDatos(
+        id,
+        codigo,
+        numero,
+        nombreSeguro,
+        tipo || 'Sencilla',
+        piso ? String(piso).trim() : '',
+        estadoFinal,
+        precio,
+        (err) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+          } else {
+            res.json({ message: 'Chinchorro actualizado', id });
+          }
+        }
+      );
+    });
+  });
 });
 
 app.put('/api/chinchorros/:id/estado', requireAuth, (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
   const { estado } = req.body;
-  if (!estado || !['Disponible', 'Ocupada'].includes(estado)) {
-    return res.status(400).json({ error: 'Estado inválido' });
+  const estadosPermitidosListado = ['Disponible', 'En limpieza'];
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
   }
-  db.updateChinchorroEstado(id, estado, (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.json({ message: 'Estado actualizado' });
+  if (!estado || !estadosPermitidosListado.includes(estado)) {
+    return res.status(400).json({
+      error:
+        'Desde el listado solo puede elegir Disponible o En limpieza. Ocupada y Reservada las define una reserva; Fuera de servicio se cambia en Modificar.'
+    });
+  }
+  db.chinchorroTieneReservaActivaHoy(id, (errRes, conReserva) => {
+    if (errRes) {
+      return res.status(500).json({ error: errRes.message });
     }
+    if (conReserva) {
+      return res.status(403).json({
+        error: 'El chinchorro está ocupado por una reserva activa. Finalice o modifique la reserva.'
+      });
+    }
+    db.getChinchorroById(id, (errCh, ch) => {
+      if (errCh) {
+        return res.status(500).json({ error: errCh.message });
+      }
+      if (!ch) {
+        return res.status(404).json({ error: 'Chinchorro no encontrado' });
+      }
+      const estActual = String(ch.estado || '');
+      if (estActual === 'Fuera de servicio') {
+        return res.status(403).json({
+          error: 'El chinchorro está fuera de servicio. Use Modificar para rehabilitarlo.'
+        });
+      }
+      if (estActual === 'Ocupada' || estActual === 'Reservada') {
+        return res.status(403).json({
+          error: `No puede cambiar el estado "${estActual}" desde el listado. Use Modificar o gestione la reserva.`
+        });
+      }
+      db.updateChinchorroEstado(id, estado, (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+        } else {
+          res.json({ message: 'Estado actualizado' });
+        }
+      });
+    });
   });
 });
 
@@ -968,37 +1263,69 @@ app.get('/api/reservas-chinchorros', requireAuth, (req, res) => {
 });
 
 app.post('/api/reservas-chinchorros', requireAuth, (req, res) => {
-  const { chinchorro_id, huesped_id, fecha_ingreso, fecha_salida } = req.body;
+  const { chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida } = req.body;
   if (!chinchorro_id || !huesped_id || !fecha_ingreso || !fecha_salida) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
+  const adultosNum = Math.max(1, parseInt(adultos, 10) || 1);
+  const ninosNum = Math.max(0, parseInt(ninos, 10) || 0);
+  const metodosPagoValidos = ['Efectivo', 'Tarjeta', 'Transferencia'];
+  const metodoPagoSeguro = metodosPagoValidos.includes(String(metodo_pago)) ? String(metodo_pago) : 'Efectivo';
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de fin debe ser posterior al inicio' });
   }
-  db.createReservaChinchorro(chinchorro_id, huesped_id, fecha_ingreso, fecha_salida, (err, reserva) => {
+  db.createReservaChinchorro(
+    chinchorro_id,
+    huesped_id,
+    adultosNum,
+    ninosNum,
+    tipo_requerido != null ? String(tipo_requerido).trim() : '',
+    metodoPagoSeguro,
+    observaciones != null ? String(observaciones).trim() : '',
+    fecha_ingreso,
+    fecha_salida,
+    parseTarifaDia(req.body),
+    (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });
     } else {
       res.status(201).json(reserva);
     }
-  });
+    }
+  );
 });
 
 app.put('/api/reservas-chinchorros/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { chinchorro_id, huesped_id, fecha_ingreso, fecha_salida } = req.body;
+  const { chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida } = req.body;
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
   const cid = parseInt(chinchorro_id, 10);
   const hid = parseInt(huesped_id, 10);
+  const adultosNum = Math.max(1, parseInt(adultos, 10) || 1);
+  const ninosNum = Math.max(0, parseInt(ninos, 10) || 0);
+  const metodosPagoValidos = ['Efectivo', 'Tarjeta', 'Transferencia'];
+  const metodoPagoSeguro = metodosPagoValidos.includes(String(metodo_pago)) ? String(metodo_pago) : 'Efectivo';
   if (!Number.isFinite(cid) || cid < 1 || !Number.isFinite(hid) || hid < 1 || !fecha_ingreso || !fecha_salida) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de fin debe ser posterior al inicio' });
   }
-  db.updateReservaChinchorroDatos(id, cid, hid, fecha_ingreso, fecha_salida, (err) => {
+  db.updateReservaChinchorroDatos(
+    id,
+    cid,
+    hid,
+    adultosNum,
+    ninosNum,
+    tipo_requerido != null ? String(tipo_requerido).trim() : '',
+    metodoPagoSeguro,
+    observaciones != null ? String(observaciones).trim() : '',
+    fecha_ingreso,
+    fecha_salida,
+    parseTarifaDia(req.body),
+    (err) => {
     if (err) {
       if (String(err.message).includes('no encontrada')) {
         return res.status(404).json({ error: err.message });
@@ -1009,7 +1336,8 @@ app.put('/api/reservas-chinchorros/:id', requireAuth, (req, res) => {
       return res.status(500).json({ error: err.message });
     }
     res.json({ message: 'Reserva de chinchorro actualizada', id });
-  });
+    }
+  );
 });
 
 app.put('/api/reservas-chinchorros/:id/estado', requireAuth, (req, res) => {
