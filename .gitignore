@@ -2,6 +2,9 @@ node_modules/
 hotel.db
 hotel.db-journal
 data/
+# BD de producción incluida en el repo (copia para Render)
+!seed/
+!seed/hotel.db
 .DS_Store
 *.log
 .env

@@ -15,6 +15,20 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+/** Copia la BD incluida en el repo (seed) si aún no hay archivo local. */
+const SEED_DB = path.join(__dirname, 'seed', 'hotel.db');
+const applySeed =
+  process.env.APPLY_DB_SEED === '1' ||
+  process.env.APPLY_DB_SEED === 'true';
+if (fs.existsSync(SEED_DB) && (applySeed || !fs.existsSync(DB_PATH))) {
+  try {
+    fs.copyFileSync(SEED_DB, DB_PATH);
+    console.log(applySeed ? 'BD actualizada desde seed:' : 'BD cargada desde seed:', SEED_DB);
+  } catch (e) {
+    console.warn('No se pudo copiar seed/hotel.db:', e.message);
+  }
+}
+
 /** Si existe hotel.db antiguo en la raíz, copiarlo a data/ (migración local). */
 const legacyDb = path.join(__dirname, 'hotel.db');
 if (!fs.existsSync(DB_PATH) && fs.existsSync(legacyDb)) {

@@ -13,6 +13,9 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true
+      # Carga seed/hotel.db en el primer despliegue (quitar después si ya tiene datos en producción).
+      - key: APPLY_DB_SEED
+        value: "1"
       # Descomenta si añades disco persistente montado en /data:
       # - key: DATA_DIR
       #   value: /data
