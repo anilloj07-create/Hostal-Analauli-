@@ -488,8 +488,54 @@ function botonesPagoReserva(r, tipo, fnSaldo) {
     const fnAbono = tipo === 'chinchorro' ? 'mostrarModalAbonoChinchorro' : 'mostrarModalAbonoHabitacion';
     const fnTotal = tipo === 'chinchorro' ? 'totalizarReservaChinchorroPago' : 'totalizarReservaHabitacionPago';
     return `
-        <button type="button" class="btn-secondary btn-small" onclick="${fnAbono}(${id})">💵 Abonar</button>
-        <button type="button" class="btn-primary btn-small" onclick="${fnTotal}(${id})">✅ Totalizar</button>
+        <button type="button" class="btn-secondary btn-small btn-reserva" onclick="${fnAbono}(${id})" title="Registrar abono">💵 Abonar</button>
+        <button type="button" class="btn-primary btn-small btn-reserva" onclick="${fnTotal}(${id})" title="Pagar saldo completo">✅ Totalizar</button>
+    `;
+}
+
+function htmlAccionesReservaHabitacion(reserva) {
+    const id = Number(reserva.id);
+    const activa = reserva.estado === 'Activa';
+    return `
+        <td class="td-acciones-reserva">
+            <div class="reserva-acciones">
+                <div class="reserva-acciones-grupo">
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
+                    ${botonesPagoReserva(reserva, 'habitacion', saldoReservaHabitacion)}
+                </div>
+                <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
+                    ${
+                        activa
+                            ? `<button type="button" class="btn-secondary btn-small btn-reserva" onclick="cancelarReserva(${id})" title="Cancelar reserva">❌ Cancelar</button>`
+                            : ''
+                    }
+                    <button type="button" class="btn-danger btn-small btn-reserva" onclick="eliminarReserva(${id})" title="Eliminar reserva">🗑️ Eliminar</button>
+                </div>
+            </div>
+        </td>
+    `;
+}
+
+function htmlAccionesReservaChinchorro(r) {
+    const id = Number(r.id);
+    const activa = r.estado === 'Activa';
+    return `
+        <td class="td-acciones-reserva">
+            <div class="reserva-acciones">
+                <div class="reserva-acciones-grupo">
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReservaChinchorro(${id})" title="Modificar reserva">✏️ Modificar</button>
+                    ${botonesPagoReserva(r, 'chinchorro', saldoReservaChinchorro)}
+                </div>
+                <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
+                    ${
+                        activa
+                            ? `<button type="button" class="btn-secondary btn-small btn-reserva" onclick="cancelarReservaChinchorro(${id})" title="Cancelar reserva">❌ Cancelar</button>`
+                            : ''
+                    }
+                    <button type="button" class="btn-danger btn-small btn-reserva" onclick="eliminarReservaChinchorro(${id})" title="Eliminar reserva">🗑️ Eliminar</button>
+                </div>
+            </div>
+        </td>
     `;
 }
 
@@ -2801,12 +2847,7 @@ function mostrarReservasChinchorros() {
             <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaChinchorro, saldoReservaChinchorro)}</td>
             <td>${htmlCeldaSaldoReserva(r, saldoReservaChinchorro)}</td>
             <td>${r.observaciones || '-'}</td>
-            <td>
-                ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="modificarReservaChinchorro(${r.id})">✏️ Modificar</button>` : ''}
-                ${botonesPagoReserva(r, 'chinchorro', saldoReservaChinchorro)}
-                ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="cancelarReservaChinchorro(${r.id})">❌ Cancelar</button>` : ''}
-                <button type="button" class="btn-danger btn-small" onclick="eliminarReservaChinchorro(${r.id})">🗑️ Eliminar</button>
-            </td>
+            ${htmlAccionesReservaChinchorro(r)}
         `;
         tbody.appendChild(row);
     });
@@ -3396,15 +3437,7 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
             <td>${htmlCeldaPagoReserva(reserva, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
             <td>${htmlCeldaSaldoReserva(reserva, saldoReservaHabitacion)}</td>
             <td>${reserva.observaciones || '-'}</td>
-            <td>
-                <button type="button" class="btn-secondary btn-small" onclick="modificarReserva(${reserva.id})">✏️ Modificar</button>
-                ${botonesPagoReserva(reserva, 'habitacion', saldoReservaHabitacion)}
-                ${reserva.estado === 'Activa' ?
-                    `<button type="button" class="btn-secondary btn-small" onclick="cancelarReserva(${reserva.id})">❌ Cancelar</button>` :
-                    ''
-                }
-                <button type="button" class="btn-danger btn-small" onclick="eliminarReserva(${reserva.id})">🗑️ Eliminar</button>
-            </td>
+            ${htmlAccionesReservaHabitacion(reserva)}
         `;
         tbody.appendChild(row);
     });
