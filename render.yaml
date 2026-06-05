@@ -1,19 +1,15 @@
-# Despliegue en Render: https://render.com
-# Conecta el repo y Render aplicará esta configuración.
+# Despliegue en Render (plan gratuito): https://render.com
+# Sin disco persistente: la BD vive en el servidor; en plan free puede reiniciarse al redesplegar.
+# Para datos permanentes, añade disco en /data y DATA_DIR=/data (plan de pago).
 services:
   - type: web
     name: hostal-analauli
     runtime: node
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATA_DIR
-        value: /data
       - key: SESSION_SECRET
         generateValue: true
-    disk:
-      name: datos-hostal
-      mountPath: /data
-      sizeGB: 1
