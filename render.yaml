@@ -1,6 +1,6 @@
-# Despliegue en Render (plan gratuito): https://render.com
-# Sin disco persistente: la BD vive en el servidor; en plan free puede reiniciarse al redesplegar.
-# Para datos permanentes, añade disco en /data y DATA_DIR=/data (plan de pago).
+# Despliegue en Render: https://render.com
+# La BD SQLite se crea sola en ./data/hotel.db al arrancar.
+# Para datos permanentes entre reinicios, añade disco y DATA_DIR=/data (plan de pago).
 services:
   - type: web
     name: hostal-analauli
@@ -13,3 +13,6 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true
+      # Descomenta si añades disco persistente montado en /data:
+      # - key: DATA_DIR
+      #   value: /data

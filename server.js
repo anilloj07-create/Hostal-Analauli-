@@ -407,12 +407,22 @@ function normalizeBackgroundImageUrl(input) {
   return null;
 }
 
-/** Comprueba que el servidor expone las rutas actuales (útil tras actualizar el código). */
+/** Estado del servidor y conexión a la base de datos. */
 app.get('/api/status', (req, res) => {
-  res.json({
-    ok: true,
-    version: 2,
-    features: ['hotel-tema-put', 'reservas-put']
+  const dbInfo = db.getDatabaseInfo();
+  db.pingDatabase((err) => {
+    res.json({
+      ok: !err && dbInfo.connected,
+      version: 3,
+      database: {
+        connected: dbInfo.connected && !err,
+        path: dbInfo.path,
+        dataDir: dbInfo.dataDir,
+        fileExists: dbInfo.exists,
+        error: err ? err.message : null
+      },
+      features: ['hotel-tema-put', 'reservas-put', 'sqlite-data-dir']
+    });
   });
 });
 
@@ -1383,14 +1393,28 @@ if (DATA_DIR) {
   app.use('/uploads', express.static(uploadsRoot));
 }
 
-// Servir estáticos después de rutas API (evita que archivos públicos interfieran con /api).
-app.use(express.static('public'));
+// Servir estáticos después de rutas API (ruta absoluta para producción en Render).
+const PUBLIC_DIR = path.join(__dirname, 'public');
+app.use(express.static(PUBLIC_DIR));
+
+// Cualquier ruta GET no encontrada → login (evita pantalla en blanco "Not Found").
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  if (req.session && req.session.userId) {
+    return res.redirect('/index.html');
+  }
+  return res.redirect('/login.html');
+});
 
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
-  if (DATA_DIR) {
-    console.log(`Datos persistentes en: ${DATA_DIR}`);
+  const dbInfo = db.getDatabaseInfo();
+  console.log(`Base de datos: ${dbInfo.path}`);
+  if (process.env.DATA_DIR) {
+    console.log(`Datos persistentes (disco Render): ${process.env.DATA_DIR}`);
   }
-  console.log('API: GET /api/hotel/nombre | GET /api/hotel/apariencia | PUT /api/hotel/tema');
+  console.log('API: GET /api/status | GET /api/hotel/nombre | PUT /api/hotel/tema');
 });

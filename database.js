@@ -2,22 +2,66 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : null;
-const DB_PATH = DATA_DIR ? path.join(DATA_DIR, 'hotel.db') : path.join(__dirname, 'hotel.db');
+/** Carpeta de datos: en Render con disco use DATA_DIR=/data; si no, ./data en el proyecto. */
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, 'data');
 
-if (DATA_DIR && !fs.existsSync(DATA_DIR)) {
+const DB_PATH = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.join(DATA_DIR, 'hotel.db');
+
+if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+/** Si existe hotel.db antiguo en la raíz, copiarlo a data/ (migración local). */
+const legacyDb = path.join(__dirname, 'hotel.db');
+if (!fs.existsSync(DB_PATH) && fs.existsSync(legacyDb)) {
+  try {
+    fs.copyFileSync(legacyDb, DB_PATH);
+    console.log('Base de datos migrada a:', DB_PATH);
+  } catch (e) {
+    console.warn('No se pudo migrar hotel.db a data/:', e.message);
+  }
+}
+
+let dbReady = false;
 
 // Crear conexión a la base de datos
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error('Error al conectar con la base de datos:', err.message);
+    console.error('Ruta intentada:', DB_PATH);
   } else {
+    dbReady = true;
     console.log('Conectado a la base de datos SQLite');
-    initDatabase();
+    console.log('Archivo BD:', DB_PATH);
+    db.run('PRAGMA journal_mode = WAL', (walErr) => {
+      if (walErr) console.warn('PRAGMA WAL:', walErr.message);
+      initDatabase();
+    });
   }
 });
+
+function getDatabaseInfo() {
+  return {
+    connected: dbReady,
+    path: DB_PATH,
+    dataDir: DATA_DIR,
+    exists: fs.existsSync(DB_PATH)
+  };
+}
+
+function pingDatabase(callback) {
+  if (!dbReady) {
+    return callback(new Error('Base de datos no conectada'));
+  }
+  db.get('SELECT 1 as ok', (err, row) => {
+    if (err) return callback(err);
+    callback(null, !!(row && row.ok === 1));
+  });
+}
 
 // Inicializar tablas
 function initDatabase() {
@@ -1272,6 +1316,8 @@ function verifyPassword(password, hash, callback) {
 
 module.exports = {
   db,
+  getDatabaseInfo,
+  pingDatabase,
   getHotel,
   ensureHotelRow,
   updateHotelNombre,
