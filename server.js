@@ -687,6 +687,13 @@ function parseTarifaDia(body) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function parseMontoAbonado(body) {
+  const v = body && (body.monto != null ? body.monto : body.monto_abonado);
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 /** Estado al guardar desde Modificar: permite limpieza y fuera de servicio; no devuelve error por Ocupada/Reservada. */
 function resolverEstadoInventarioModificar(habActual, estadoSolicitado, conReservaHoy) {
   const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
@@ -1032,6 +1039,7 @@ app.post('/api/reservas', requireAuth, (req, res) => {
     fecha_ingreso,
     fecha_salida,
     tarifaNoche,
+    parseMontoAbonado(req.body),
     (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -1040,6 +1048,46 @@ app.post('/api/reservas', requireAuth, (req, res) => {
     }
     }
   );
+});
+
+app.post('/api/reservas/:id/abono', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const monto = parseMontoAbonado(req.body);
+  if (monto <= 0) {
+    return res.status(400).json({ error: 'Indique un monto de abono mayor a cero' });
+  }
+  db.registrarAbonoReserva(id, monto, (err, result) => {
+    if (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
+      if (msg.includes('cancelada') || msg.includes('totalizada') || msg.includes('calculable')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'Abono registrado', ...result });
+  });
+});
+
+app.post('/api/reservas/:id/totalizar', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  db.totalizarReserva(id, (err, result) => {
+    if (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
+      if (msg.includes('cancelada') || msg.includes('calculable')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'Reserva totalizada', ...result });
+  });
 });
 
 app.put('/api/reservas/:id', requireAuth, (req, res) => {
@@ -1295,6 +1343,7 @@ app.post('/api/reservas-chinchorros', requireAuth, (req, res) => {
     fecha_ingreso,
     fecha_salida,
     parseTarifaDia(req.body),
+    parseMontoAbonado(req.body),
     (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -1303,6 +1352,46 @@ app.post('/api/reservas-chinchorros', requireAuth, (req, res) => {
     }
     }
   );
+});
+
+app.post('/api/reservas-chinchorros/:id/abono', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const monto = parseMontoAbonado(req.body);
+  if (monto <= 0) {
+    return res.status(400).json({ error: 'Indique un monto de abono mayor a cero' });
+  }
+  db.registrarAbonoReservaChinchorro(id, monto, (err, result) => {
+    if (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
+      if (msg.includes('cancelada') || msg.includes('totalizada') || msg.includes('calculable')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'Abono registrado', ...result });
+  });
+});
+
+app.post('/api/reservas-chinchorros/:id/totalizar', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  db.totalizarReservaChinchorro(id, (err, result) => {
+    if (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
+      if (msg.includes('cancelada') || msg.includes('calculable')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'Reserva totalizada', ...result });
+  });
 });
 
 app.put('/api/reservas-chinchorros/:id', requireAuth, (req, res) => {

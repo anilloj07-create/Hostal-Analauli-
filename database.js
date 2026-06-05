@@ -241,6 +241,11 @@ function initDatabase() {
         console.error('Migración tarifa_noche reservas:', e.message);
       }
     });
+    db.run('ALTER TABLE reservas ADD COLUMN monto_abonado REAL DEFAULT 0', (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración monto_abonado reservas:', e.message);
+      }
+    });
 
     // Chinchorros (alquiler)
     db.run(`CREATE TABLE IF NOT EXISTS chinchorros (
@@ -331,6 +336,11 @@ function initDatabase() {
     db.run('ALTER TABLE reservas_chinchorros ADD COLUMN tarifa_dia REAL DEFAULT 0', (e) => {
       if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
         console.error('Migración tarifa_dia reservas chinchorros:', e.message);
+      }
+    });
+    db.run('ALTER TABLE reservas_chinchorros ADD COLUMN monto_abonado REAL DEFAULT 0', (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración monto_abonado reservas chinchorros:', e.message);
       }
     });
 
@@ -648,6 +658,72 @@ function deleteHuesped(id, callback) {
 }
 
 // Funciones para Reservas
+function unidadesEstadiaYMD(fechaIngreso, fechaSalida) {
+  const a = new Date(String(fechaIngreso).slice(0, 10));
+  const b = new Date(String(fechaSalida).slice(0, 10));
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 1;
+  const days = Math.round((b - a) / (24 * 3600 * 1000));
+  return Math.max(1, days);
+}
+
+function calcularTotalReservaHabitacionRow(row) {
+  if (!row) return 0;
+  const tarifaRaw =
+    row.tarifa_noche != null && Number(row.tarifa_noche) > 0
+      ? Number(row.tarifa_noche)
+      : row.habitacion_precio_diario != null
+        ? Number(row.habitacion_precio_diario)
+        : Number(row.precio_diario || 0);
+  if (!Number.isFinite(tarifaRaw) || tarifaRaw <= 0) return 0;
+  return tarifaRaw * unidadesEstadiaYMD(row.fecha_ingreso, row.fecha_salida);
+}
+
+function calcularTotalReservaChinchorroRow(row) {
+  if (!row) return 0;
+  const tarifaRaw =
+    row.tarifa_dia != null && Number(row.tarifa_dia) > 0
+      ? Number(row.tarifa_dia)
+      : row.chinchorro_precio_diario != null
+        ? Number(row.chinchorro_precio_diario)
+        : Number(row.precio_diario || 0);
+  if (!Number.isFinite(tarifaRaw) || tarifaRaw <= 0) return 0;
+  return tarifaRaw * unidadesEstadiaYMD(row.fecha_ingreso, row.fecha_salida);
+}
+
+function normalizarMontoAbonado(monto, total) {
+  const t = Number.isFinite(Number(total)) && Number(total) >= 0 ? Number(total) : 0;
+  const m = Number.isFinite(Number(monto)) && Number(monto) >= 0 ? Number(monto) : 0;
+  return Math.min(t, m);
+}
+
+function getReservaPagoContext(id, callback) {
+  db.get(
+    `
+      SELECT r.*,
+             COALESCE(NULLIF(r.tarifa_noche, 0), h.precio_diario, 0) as habitacion_precio_diario
+      FROM reservas r
+      JOIN habitaciones h ON r.habitacion_id = h.id
+      WHERE r.id = ?
+    `,
+    [id],
+    callback
+  );
+}
+
+function getReservaChinchorroPagoContext(id, callback) {
+  db.get(
+    `
+      SELECT r.*,
+             COALESCE(NULLIF(r.tarifa_dia, 0), ch.precio_diario, 0) as chinchorro_precio_diario
+      FROM reservas_chinchorros r
+      JOIN chinchorros ch ON r.chinchorro_id = ch.id
+      WHERE r.id = ?
+    `,
+    [id],
+    callback
+  );
+}
+
 function getAllReservas(callback) {
   db.all(`
     SELECT r.*,
@@ -743,10 +819,16 @@ function updateReservaDatos(id, habitacion_id, huesped_id, adultos, ninos, tipo_
           }
           sincronizarEstadoHabitacionConReservas(roomAnt, (e1) => {
             if (e1) return callback(e1);
-            if (Number(roomAnt) === Number(habitacion_id)) {
-              return callback(null);
-            }
-            sincronizarEstadoHabitacionConReservas(habitacion_id, (e2) => callback(e2 || null));
+            const syncNueva = () => {
+              if (Number(roomAnt) === Number(habitacion_id)) {
+                return ajustarMontoAbonadoReserva(id, callback);
+              }
+              sincronizarEstadoHabitacionConReservas(habitacion_id, (e2) => {
+                if (e2) return callback(e2);
+                ajustarMontoAbonadoReserva(id, callback);
+              });
+            };
+            syncNueva();
           });
         }
       );
@@ -791,7 +873,58 @@ function updateReservaDatos(id, habitacion_id, huesped_id, adultos, ninos, tipo_
   });
 }
 
-function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, callback) {
+function ajustarMontoAbonadoReserva(id, callback) {
+  getReservaPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    const total = calcularTotalReservaHabitacionRow(row);
+    const abono = normalizarMontoAbonado(row.monto_abonado, total);
+    db.run('UPDATE reservas SET monto_abonado = ? WHERE id = ?', [abono, id], callback);
+  });
+}
+
+function registrarAbonoReserva(id, monto, callback) {
+  const extra = Number(monto);
+  if (!Number.isFinite(extra) || extra <= 0) {
+    return callback(new Error('Indique un monto de abono mayor a cero'));
+  }
+  getReservaPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    if (String(row.estado) === 'Cancelada') {
+      return callback(new Error('No se puede abonar una reserva cancelada'));
+    }
+    const total = calcularTotalReservaHabitacionRow(row);
+    if (total <= 0) return callback(new Error('La reserva no tiene un total calculable'));
+    const actual = Number(row.monto_abonado || 0);
+    if (actual >= total - 0.005) {
+      return callback(new Error('La reserva ya está totalizada'));
+    }
+    const nuevo = normalizarMontoAbonado(actual + extra, total);
+    db.run('UPDATE reservas SET monto_abonado = ? WHERE id = ?', [nuevo, id], (runErr) => {
+      if (runErr) return callback(runErr);
+      callback(null, { id, monto_abonado: nuevo, total, saldo: Math.max(0, total - nuevo) });
+    });
+  });
+}
+
+function totalizarReserva(id, callback) {
+  getReservaPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    if (String(row.estado) === 'Cancelada') {
+      return callback(new Error('No se puede totalizar una reserva cancelada'));
+    }
+    const total = calcularTotalReservaHabitacionRow(row);
+    if (total <= 0) return callback(new Error('La reserva no tiene un total calculable'));
+    db.run('UPDATE reservas SET monto_abonado = ? WHERE id = ?', [total, id], (runErr) => {
+      if (runErr) return callback(runErr);
+      callback(null, { id, monto_abonado: total, total, saldo: 0 });
+    });
+  });
+}
+
+function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado, callback) {
   getHabitacionById(habitacion_id, (errHab, hab) => {
     if (errHab) return callback(errHab);
     if (!hab) return callback(new Error('Habitación no encontrada'));
@@ -814,8 +947,10 @@ function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacio
     } else {
       const tarifa = tarifa_noche == null || tarifa_noche === '' ? 0 : Number(tarifa_noche);
       const tarifaSegura = Number.isFinite(tarifa) && tarifa >= 0 ? tarifa : 0;
-      db.run("INSERT INTO reservas (habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura], function(err) {
+      const totalEst = tarifaSegura * unidadesEstadiaYMD(fecha_ingreso, fecha_salida);
+      const abonoInicial = normalizarMontoAbonado(monto_abonado, totalEst);
+      db.run("INSERT INTO reservas (habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial], function(err) {
         if (err) {
           callback(err);
         } else {
@@ -836,6 +971,7 @@ function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacio
             fecha_ingreso, 
             fecha_salida,
             tarifa_noche: tarifaSegura,
+            monto_abonado: abonoInicial,
             estado: 'Activa'
           });
           });
@@ -976,7 +1112,58 @@ function getAllReservasChinchorros(callback) {
   );
 }
 
-function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, callback) {
+function ajustarMontoAbonadoReservaChinchorro(id, callback) {
+  getReservaChinchorroPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    const total = calcularTotalReservaChinchorroRow(row);
+    const abono = normalizarMontoAbonado(row.monto_abonado, total);
+    db.run('UPDATE reservas_chinchorros SET monto_abonado = ? WHERE id = ?', [abono, id], callback);
+  });
+}
+
+function registrarAbonoReservaChinchorro(id, monto, callback) {
+  const extra = Number(monto);
+  if (!Number.isFinite(extra) || extra <= 0) {
+    return callback(new Error('Indique un monto de abono mayor a cero'));
+  }
+  getReservaChinchorroPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    if (String(row.estado) === 'Cancelada') {
+      return callback(new Error('No se puede abonar una reserva cancelada'));
+    }
+    const total = calcularTotalReservaChinchorroRow(row);
+    if (total <= 0) return callback(new Error('La reserva no tiene un total calculable'));
+    const actual = Number(row.monto_abonado || 0);
+    if (actual >= total - 0.005) {
+      return callback(new Error('La reserva ya está totalizada'));
+    }
+    const nuevo = normalizarMontoAbonado(actual + extra, total);
+    db.run('UPDATE reservas_chinchorros SET monto_abonado = ? WHERE id = ?', [nuevo, id], (runErr) => {
+      if (runErr) return callback(runErr);
+      callback(null, { id, monto_abonado: nuevo, total, saldo: Math.max(0, total - nuevo) });
+    });
+  });
+}
+
+function totalizarReservaChinchorro(id, callback) {
+  getReservaChinchorroPagoContext(id, (err, row) => {
+    if (err) return callback(err);
+    if (!row) return callback(new Error('Reserva no encontrada'));
+    if (String(row.estado) === 'Cancelada') {
+      return callback(new Error('No se puede totalizar una reserva cancelada'));
+    }
+    const total = calcularTotalReservaChinchorroRow(row);
+    if (total <= 0) return callback(new Error('La reserva no tiene un total calculable'));
+    db.run('UPDATE reservas_chinchorros SET monto_abonado = ? WHERE id = ?', [total, id], (runErr) => {
+      if (runErr) return callback(runErr);
+      callback(null, { id, monto_abonado: total, total, saldo: 0 });
+    });
+  });
+}
+
+function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado, callback) {
   getChinchorroById(chinchorro_id, (errCh, ch) => {
     if (errCh) return callback(errCh);
     if (!ch) return callback(new Error('Chinchorro no encontrado'));
@@ -997,9 +1184,11 @@ function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo
     } else {
       const tarifaRaw = tarifa_dia == null || tarifa_dia === '' ? 0 : Number(tarifa_dia);
       const tarifaSegura = Number.isFinite(tarifaRaw) && tarifaRaw >= 0 ? tarifaRaw : 0;
+      const totalEst = tarifaSegura * unidadesEstadiaYMD(fecha_ingreso, fecha_salida);
+      const abonoInicial = normalizarMontoAbonado(monto_abonado, totalEst);
       db.run(
-        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura],
+        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial],
         function(err) {
           if (err) {
             callback(err);
@@ -1021,6 +1210,7 @@ function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo
                 fecha_ingreso,
                 fecha_salida,
                 tarifa_dia: tarifaSegura,
+                monto_abonado: abonoInicial,
                 estado: 'Activa'
               });
             });
@@ -1087,10 +1277,16 @@ function updateReservaChinchorroDatos(id, chinchorro_id, huesped_id, adultos, ni
           }
           sincronizarEstadoChinchorroConReservas(chAnt, (e1) => {
             if (e1) return callback(e1);
-            if (Number(chAnt) === Number(chinchorro_id)) {
-              return callback(null);
-            }
-            sincronizarEstadoChinchorroConReservas(chinchorro_id, (e2) => callback(e2 || null));
+            const syncNueva = () => {
+              if (Number(chAnt) === Number(chinchorro_id)) {
+                return ajustarMontoAbonadoReservaChinchorro(id, callback);
+              }
+              sincronizarEstadoChinchorroConReservas(chinchorro_id, (e2) => {
+                if (e2) return callback(e2);
+                ajustarMontoAbonadoReservaChinchorro(id, callback);
+              });
+            };
+            syncNueva();
           });
         }
       );
@@ -1356,6 +1552,8 @@ module.exports = {
   getReservaById,
   updateReservaDatos,
   createReserva,
+  registrarAbonoReserva,
+  totalizarReserva,
   updateReservaEstado,
   sincronizarEstadoHabitacionConReservas,
   sincronizarTodosEstadosInventario,
@@ -1382,6 +1580,8 @@ module.exports = {
   deleteChinchorro,
   getAllReservasChinchorros,
   createReservaChinchorro,
+  registrarAbonoReservaChinchorro,
+  totalizarReservaChinchorro,
   updateReservaChinchorroDatos,
   updateReservaChinchorroEstado,
   deleteReservaChinchorro

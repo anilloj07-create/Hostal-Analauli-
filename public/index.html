@@ -137,7 +137,9 @@
                             <th>Fecha Salida</th>
                             <th>Estado</th>
                             <th>Tarifa / noche</th>
-                            <th>Valor ref.</th>
+                            <th>Total</th>
+                            <th>Abonado</th>
+                            <th>Saldo</th>
                             <th>Observaciones</th>
                             <th>Acciones</th>
                         </tr>
@@ -163,7 +165,9 @@
                             <th>Fecha fin</th>
                             <th>Estado</th>
                             <th>Tarifa / día</th>
-                            <th>Valor ref.</th>
+                            <th>Total</th>
+                            <th>Abonado</th>
+                            <th>Saldo</th>
                             <th>Observaciones</th>
                             <th>Acciones</th>
                         </tr>
@@ -685,6 +689,11 @@
                     <input type="number" id="tarifaNocheReserva" min="0" step="0.01" value="0" required placeholder="0.00">
                     <small class="form-hint">Valor cobrado por cada noche de esta reserva (indicadores y valor ref.).</small>
                 </div>
+                <div class="form-group" id="grupoAbonoInicialReserva">
+                    <label>Abono inicial (opcional)</label>
+                    <input type="number" id="abonoInicialReserva" min="0" step="0.01" placeholder="0.00">
+                    <small class="form-hint">Opcional. Puede abonar un monto parcial o el total al crear la reserva.</small>
+                </div>
                 <div class="form-group">
                     <label>Fecha de Ingreso *</label>
                     <input type="date" id="fechaIngreso" required>
@@ -764,6 +773,11 @@
                     <input type="number" id="tarifaDiaReservaChin" min="0" step="0.01" value="0" required placeholder="0.00">
                     <small class="form-hint">Valor cobrado por cada día de esta reserva (indicadores y valor ref.).</small>
                 </div>
+                <div class="form-group" id="grupoAbonoInicialReservaChin">
+                    <label>Abono inicial (opcional)</label>
+                    <input type="number" id="abonoInicialReservaChin" min="0" step="0.01" placeholder="0.00">
+                    <small class="form-hint">Opcional. Puede abonar un monto parcial o el total al crear la reserva.</small>
+                </div>
                 <div class="form-group">
                     <label>Fecha de inicio *</label>
                     <input type="date" id="fechaIngresoChin" required>
@@ -779,6 +793,28 @@
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary">Reservar</button>
                     <button type="button" class="btn-secondary" onclick="cerrarModal('modalReservaChinchorro')">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: registrar abono -->
+    <div id="modalAbonoReserva" class="modal">
+        <div class="modal-content modal-content-narrow">
+            <span class="close" onclick="cerrarModal('modalAbonoReserva')">&times;</span>
+            <h2 id="tituloModalAbono">Registrar abono</h2>
+            <p id="resumenAbonoReserva" class="modal-hint"></p>
+            <form id="formAbonoReserva" onsubmit="confirmarAbonoReserva(event)">
+                <input type="hidden" id="abonoReservaTipo" value="">
+                <input type="hidden" id="abonoReservaId" value="">
+                <div class="form-group">
+                    <label>Monto de este abono *</label>
+                    <input type="number" id="montoAbonoReserva" min="0.01" step="0.01" required placeholder="0.00" inputmode="decimal">
+                    <small id="previewAbonoReserva" class="form-hint">Este valor se suma al abonado ya registrado.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Registrar abono</button>
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalAbonoReserva')">Cancelar</button>
                 </div>
             </form>
         </div>
@@ -916,6 +952,6 @@
     </div>
 
     <script src="theme-apply.js?v=5"></script>
-    <script src="app.js?v=28"></script>
+    <script src="app.js?v=31"></script>
 </body>
 </html>

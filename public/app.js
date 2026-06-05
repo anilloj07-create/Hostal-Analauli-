@@ -387,6 +387,12 @@ function chinchorrosFiltrados() {
     );
 }
 
+function totalEstimadoNuevaReserva(tarifa, fechaIngreso, fechaSalida) {
+    const p = Number(tarifa);
+    if (!Number.isFinite(p) || p <= 0) return 0;
+    return p * unidadesEstadiaYMD(fechaIngreso, fechaSalida);
+}
+
 function unidadesEstadiaYMD(fechaIngreso, fechaSalida) {
     const fi = String(fechaIngreso).slice(0, 10);
     const fs = String(fechaSalida).slice(0, 10);
@@ -426,6 +432,67 @@ function valorMonetarioReservaChinchorro(r) {
     return p * unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
 }
 
+function montoAbonadoReserva(r) {
+    const a = Number(r.monto_abonado);
+    return Number.isFinite(a) && a >= 0 ? a : 0;
+}
+
+function saldoReservaHabitacion(r) {
+    const total = valorMonetarioReservaHabitacion(r);
+    return Math.max(0, total - Math.min(montoAbonadoReserva(r), total));
+}
+
+function saldoReservaChinchorro(r) {
+    const total = valorMonetarioReservaChinchorro(r);
+    return Math.max(0, total - Math.min(montoAbonadoReserva(r), total));
+}
+
+function reservaTieneSaldoPendiente(r, fnSaldo) {
+    return r.estado !== 'Cancelada' && fnSaldo(r) > 0.005;
+}
+
+function reservaEstaTotalizada(r, fnTotal) {
+    const total = fnTotal(r);
+    if (total <= 0) return false;
+    return montoAbonadoReserva(r) >= total - 0.005;
+}
+
+function htmlCeldaPagoReserva(r, fnTotal, fnSaldo) {
+    const total = fnTotal(r);
+    const abonado = Math.min(montoAbonadoReserva(r), total);
+    const saldo = fnSaldo(r);
+    if (total <= 0) {
+        return '<span class="muted">Sin tarifa</span>';
+    }
+    const badge = saldo <= 0.005
+        ? '<span class="estado-badge estado-disponible" style="margin-left:4px">Pagado</span>'
+        : '';
+    return `
+        <span class="txt-precio-small"><strong>${escapeHtmlCal(formatoMoneda(abonado))}</strong>${badge}</span>
+    `;
+}
+
+function htmlCeldaSaldoReserva(r, fnSaldo) {
+    const saldo = fnSaldo(r);
+    if (saldo <= 0.005) {
+        return '<span class="muted">—</span>';
+    }
+    return `<strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(saldo))}</strong>`;
+}
+
+function botonesPagoReserva(r, tipo, fnSaldo) {
+    if (r.estado === 'Cancelada') return '';
+    const id = Number(r.id);
+    const saldo = fnSaldo(r);
+    if (saldo <= 0.005) return '';
+    const fnAbono = tipo === 'chinchorro' ? 'mostrarModalAbonoChinchorro' : 'mostrarModalAbonoHabitacion';
+    const fnTotal = tipo === 'chinchorro' ? 'totalizarReservaChinchorroPago' : 'totalizarReservaHabitacionPago';
+    return `
+        <button type="button" class="btn-secondary btn-small" onclick="${fnAbono}(${id})">💵 Abonar</button>
+        <button type="button" class="btn-primary btn-small" onclick="${fnTotal}(${id})">✅ Totalizar</button>
+    `;
+}
+
 function sumarValoresReservas(lista, fnValor) {
     return lista.reduce((acc, r) => acc + fnValor(r), 0);
 }
@@ -435,15 +502,13 @@ function calcularResumenFinancieroReservas() {
     const chinNoCancel = reservasChinchorros.filter((r) => r.estado !== 'Cancelada');
     const habActivas = reservas.filter((r) => r.estado === 'Activa');
     const chinActivas = reservasChinchorros.filter((r) => r.estado === 'Activa');
-    const habFinal = reservas.filter((r) => r.estado === 'Finalizada');
-    const chinFinal = reservasChinchorros.filter((r) => r.estado === 'Finalizada');
 
     const ingresosHab = sumarValoresReservas(habNoCancel, valorMonetarioReservaHabitacion);
     const ingresosChin = sumarValoresReservas(chinNoCancel, valorMonetarioReservaChinchorro);
-    const pagadoHab = sumarValoresReservas(habFinal, valorMonetarioReservaHabitacion);
-    const pagadoChin = sumarValoresReservas(chinFinal, valorMonetarioReservaChinchorro);
-    const adeudadoHab = sumarValoresReservas(habActivas, valorMonetarioReservaHabitacion);
-    const adeudadoChin = sumarValoresReservas(chinActivas, valorMonetarioReservaChinchorro);
+    const pagadoHab = sumarValoresReservas(habNoCancel, (r) => Math.min(montoAbonadoReserva(r), valorMonetarioReservaHabitacion(r)));
+    const pagadoChin = sumarValoresReservas(chinNoCancel, (r) => Math.min(montoAbonadoReserva(r), valorMonetarioReservaChinchorro(r)));
+    const adeudadoHab = sumarValoresReservas(habActivas, saldoReservaHabitacion);
+    const adeudadoChin = sumarValoresReservas(chinActivas, saldoReservaChinchorro);
 
     return {
         ingresosTotales: ingresosHab + ingresosChin,
@@ -798,13 +863,13 @@ function renderIndicadoresFinanciero() {
     panel.innerHTML = `
         <div class="fin-estado-grid">
             ${htmlFinCard('fin-ingresos', 'Ingresos Totales', f.ingresosTotales, `${detHabIng}<br>${detChinIng}`)}
-            ${htmlFinCard('fin-pagado', 'Pagado', f.pagado, `Finalizadas · Hab. ${formatoMoneda(f.pagadoHab)} · Chin. ${formatoMoneda(f.pagadoChin)}`)}
-            ${htmlFinCard('fin-adeudado', 'Adeudado', f.adeudado, `Activas (pendiente) · Hab. ${formatoMoneda(f.adeudadoHab)} · Chin. ${formatoMoneda(f.adeudadoChin)}`)}
+            ${htmlFinCard('fin-pagado', 'Pagado (abonado)', f.pagado, `Abonos registrados · Hab. ${formatoMoneda(f.pagadoHab)} · Chin. ${formatoMoneda(f.pagadoChin)}`)}
+            ${htmlFinCard('fin-adeudado', 'Adeudado (saldo)', f.adeudado, `Saldo pendiente en activas · Hab. ${formatoMoneda(f.adeudadoHab)} · Chin. ${formatoMoneda(f.adeudadoChin)}`)}
         </div>
         <p class="fin-estado-nota">
             Los montos se calculan con la tarifa registrada en cada reserva (noches × tarifa/noche o días × tarifa/día).
-            <strong>Pagado</strong> = reservas finalizadas; <strong>Adeudado</strong> = reservas activas aún en curso.
-            Las canceladas no se incluyen en ingresos totales.
+            <strong>Pagado</strong> = suma de abonos registrados; <strong>Adeudado</strong> = saldo pendiente en reservas activas.
+            Use <strong>Abonar</strong> o <strong>Totalizar</strong> en el listado de reservas para registrar pagos.
         </p>
     `;
 }
@@ -1261,6 +1326,7 @@ async function abrirReservaHabitacionDesdeCalendario(habitacionId, ymdClic) {
     document.getElementById('reservaNinos').value = '0';
     document.getElementById('metodoPagoReserva').value = 'Efectivo';
     document.getElementById('tarifaNocheReserva').value = '0';
+    document.getElementById('abonoInicialReserva').value = '';
     document.getElementById('observacionesReserva').value = '';
     establecerModoModalReserva(false);
     limpiarComboboxHuesped('huespedReserva');
@@ -1296,7 +1362,9 @@ async function abrirReservaChinchorroDesdeCalendario(chinchorroId, ymdClic) {
     document.getElementById('reservaChinNinos').value = '0';
     document.getElementById('metodoPagoReservaChin').value = 'Efectivo';
     document.getElementById('tarifaDiaReservaChin').value = '0';
+    document.getElementById('abonoInicialReservaChin').value = '';
     document.getElementById('observacionesReservaChin').value = '';
+    establecerModoModalReservaChin(false);
     limpiarComboboxHuesped('huespedReservaChin');
     actualizarSelectsReservaChinchorro();
     if (chinchorroId != null) {
@@ -2598,12 +2666,12 @@ function mostrarReservasChinchorros() {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (reservasChinchorros.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 24px; color: #666;">No hay reservas de chinchorros.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 24px; color: #666;">No hay reservas de chinchorros.</td></tr>';
         return;
     }
     const lista = reservasChinchorrosFiltradas();
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
     lista.forEach((r) => {
@@ -2623,9 +2691,12 @@ function mostrarReservasChinchorros() {
             <td><span class="estado-badge ${estadoClass}">${r.estado}</span></td>
             <td>${escapeHtmlCal(formatoMoneda(Number(r.chinchorro_precio_diario) || 0))}</td>
             <td>${textoValorReservaChinchorro(r)}</td>
+            <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaChinchorro, saldoReservaChinchorro)}</td>
+            <td>${htmlCeldaSaldoReserva(r, saldoReservaChinchorro)}</td>
             <td>${r.observaciones || '-'}</td>
             <td>
                 ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="modificarReservaChinchorro(${r.id})">✏️ Modificar</button>` : ''}
+                ${botonesPagoReserva(r, 'chinchorro', saldoReservaChinchorro)}
                 ${r.estado === 'Activa' ? `<button type="button" class="btn-secondary btn-small" onclick="cancelarReservaChinchorro(${r.id})">❌ Cancelar</button>` : ''}
                 <button type="button" class="btn-danger btn-small" onclick="eliminarReservaChinchorro(${r.id})">🗑️ Eliminar</button>
             </td>
@@ -2681,7 +2752,9 @@ async function mostrarModalReservaChinchorro() {
     document.getElementById('reservaChinNinos').value = '0';
     document.getElementById('metodoPagoReservaChin').value = 'Efectivo';
     document.getElementById('tarifaDiaReservaChin').value = '0';
+    document.getElementById('abonoInicialReservaChin').value = '';
     document.getElementById('observacionesReservaChin').value = '';
+    establecerModoModalReservaChin(false);
     const titulo = document.getElementById('tituloModalReservaChin');
     if (titulo) titulo.textContent = 'Reservar chinchorro';
     actualizarSelectsReservaChinchorro();
@@ -2710,6 +2783,7 @@ async function modificarReservaChinchorro(id) {
     document.getElementById('idReservaChinchorroEdicion').value = String(r.id);
     const titulo = document.getElementById('tituloModalReservaChin');
     if (titulo) titulo.textContent = 'Modificar reserva de chinchorro';
+    establecerModoModalReservaChin(true);
     actualizarSelectsReservaChinchorro();
     requestAnimationFrame(() => {
         const selCh = document.getElementById('chinchorroReserva');
@@ -2762,6 +2836,9 @@ async function guardarReservaChinchorro(event) {
     const tarifaRaw = document.getElementById('tarifaDiaReservaChin').value;
     const tarifa_dia =
         tarifaRaw === '' || tarifaRaw == null ? 0 : Math.max(0, parseFloat(tarifaRaw) || 0);
+    const abonoRawCh = document.getElementById('abonoInicialReservaChin').value;
+    const monto_abonado =
+        abonoRawCh === '' || abonoRawCh == null ? 0 : Math.max(0, parseFloat(abonoRawCh) || 0);
     if (!Number.isFinite(chinchorro_id)) {
         alert('Seleccione un chinchorro');
         return;
@@ -2790,6 +2867,17 @@ async function guardarReservaChinchorro(event) {
         alert('La fecha de fin debe ser posterior al inicio');
         return;
     }
+    const totalEstCh = !idEd ? totalEstimadoNuevaReserva(tarifa_dia, fecha_ingreso, fecha_salida) : 0;
+    let montoAbonoEnviarCh = monto_abonado;
+    if (!idEd && monto_abonado > 0 && totalEstCh > 0 && monto_abonado > totalEstCh + 0.005) {
+        if (!confirm(
+            `El abono (${formatoMoneda(monto_abonado)}) supera el total (${formatoMoneda(totalEstCh)}). ` +
+            'Se registrará como pago completo. ¿Crear la reserva?'
+        )) {
+            return;
+        }
+        montoAbonoEnviarCh = totalEstCh;
+    }
     try {
         let response;
         if (idEd) {
@@ -2802,7 +2890,7 @@ async function guardarReservaChinchorro(event) {
             response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia })
+                body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado: montoAbonoEnviarCh })
             });
         }
         if (response.ok) {
@@ -2810,6 +2898,11 @@ async function guardarReservaChinchorro(event) {
             cargarReservasChinchorros();
             cargarChinchorros();
             actualizarCalendarioDisponibilidad();
+            if (!idEd && totalEstCh > 0 && montoAbonoEnviarCh >= totalEstCh - 0.005) {
+                alert('Reserva creada correctamente. Pago completo registrado.');
+            } else if (!idEd && montoAbonoEnviarCh > 0) {
+                alert(`Reserva creada correctamente. Abono inicial: ${formatoMoneda(montoAbonoEnviarCh)}.`);
+            }
         } else {
             const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo guardar.');
             alert('Error: ' + msg);
@@ -3165,13 +3258,13 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
     tbody.innerHTML = '';
     
     if (reservas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px; color: #666;">No hay reservas registradas.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 40px; color: #666;">No hay reservas registradas.</td></tr>';
         return;
     }
 
     const lista = reservasHabitacionesFiltradas();
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 40px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
 
@@ -3193,9 +3286,12 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
             <td><span class="estado-badge ${estadoClass}">${reserva.estado}</span></td>
             <td>${escapeHtmlCal(formatoMoneda(Number(reserva.habitacion_precio_diario) || 0))}</td>
             <td>${textoValorReservaHabitacion(reserva)}</td>
+            <td>${htmlCeldaPagoReserva(reserva, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
+            <td>${htmlCeldaSaldoReserva(reserva, saldoReservaHabitacion)}</td>
             <td>${reserva.observaciones || '-'}</td>
             <td>
                 <button type="button" class="btn-secondary btn-small" onclick="modificarReserva(${reserva.id})">✏️ Modificar</button>
+                ${botonesPagoReserva(reserva, 'habitacion', saldoReservaHabitacion)}
                 ${reserva.estado === 'Activa' ?
                     `<button type="button" class="btn-secondary btn-small" onclick="cancelarReserva(${reserva.id})">❌ Cancelar</button>` :
                     ''
@@ -3252,11 +3348,22 @@ function asegurarOpcionEnSelect(selectEl, valor, textoMostrar) {
 function establecerModoModalReserva(esEdicion) {
     const hint = document.getElementById('mensajeAyudaModalReserva');
     const btn = document.getElementById('btnSubmitReserva');
+    const grupoAbono = document.getElementById('grupoAbonoInicialReserva');
     if (hint) {
         hint.hidden = !esEdicion;
     }
     if (btn) {
         btn.textContent = esEdicion ? '💾 Guardar cambios' : 'Reservar';
+    }
+    if (grupoAbono) {
+        grupoAbono.hidden = esEdicion;
+    }
+}
+
+function establecerModoModalReservaChin(esEdicion) {
+    const grupoAbono = document.getElementById('grupoAbonoInicialReservaChin');
+    if (grupoAbono) {
+        grupoAbono.hidden = esEdicion;
     }
 }
 
@@ -3269,6 +3376,7 @@ async function mostrarModalReserva() {
     document.getElementById('reservaNinos').value = '0';
     document.getElementById('metodoPagoReserva').value = 'Efectivo';
     document.getElementById('tarifaNocheReserva').value = '0';
+    document.getElementById('abonoInicialReserva').value = '';
     document.getElementById('observacionesReserva').value = '';
     establecerModoModalReserva(false);
     actualizarSelectsReserva();
@@ -3344,6 +3452,9 @@ async function guardarReserva(event) {
     const tarifaRaw = document.getElementById('tarifaNocheReserva').value;
     const tarifa_noche =
         tarifaRaw === '' || tarifaRaw == null ? 0 : Math.max(0, parseFloat(tarifaRaw) || 0);
+    const abonoRaw = document.getElementById('abonoInicialReserva').value;
+    const monto_abonado =
+        abonoRaw === '' || abonoRaw == null ? 0 : Math.max(0, parseFloat(abonoRaw) || 0);
 
     if (!Number.isFinite(habitacion_id)) {
         alert('Seleccione una habitación');
@@ -3355,8 +3466,8 @@ async function guardarReserva(event) {
         idReservaActual != null ? reservas.find((x) => Number(x.id) === idReservaActual) : null;
     const mismaHabitacion =
         reservaActual && Number(reservaActual.habitacion_id) === habitacion_id;
-    if (habSel && !inventarioPermiteNuevaReserva(hab.estado) && !mismaHabitacion) {
-        alert(mensajeInventarioNoReservableUI(hab.estado, 'habitacion'));
+    if (habSel && !inventarioPermiteNuevaReserva(habSel.estado) && !mismaHabitacion) {
+        alert(mensajeInventarioNoReservableUI(habSel.estado, 'habitacion'));
         return;
     }
     if (!Number.isFinite(huesped_id)) {
@@ -3374,6 +3485,18 @@ async function guardarReserva(event) {
         return;
     }
 
+    const totalEst = !idEdicion ? totalEstimadoNuevaReserva(tarifa_noche, fecha_ingreso, fecha_salida) : 0;
+    let montoAbonoEnviar = monto_abonado;
+    if (!idEdicion && monto_abonado > 0 && totalEst > 0 && monto_abonado > totalEst + 0.005) {
+        if (!confirm(
+            `El abono (${formatoMoneda(monto_abonado)}) supera el total (${formatoMoneda(totalEst)}). ` +
+            'Se registrará como pago completo. ¿Crear la reserva?'
+        )) {
+            return;
+        }
+        montoAbonoEnviar = totalEst;
+    }
+
     try {
         let response;
         if (idEdicion) {
@@ -3387,7 +3510,7 @@ async function guardarReserva(event) {
             response = await fetchWithAuth(`${API_URL}/reservas`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche })
+                body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado: montoAbonoEnviar })
             });
         }
 
@@ -3398,6 +3521,10 @@ async function guardarReserva(event) {
             actualizarCalendarioDisponibilidad();
             if (idEdicion) {
                 alert('Cambios guardados correctamente.');
+            } else if (totalEst > 0 && montoAbonoEnviar >= totalEst - 0.005) {
+                alert('Reserva creada correctamente. Pago completo registrado.');
+            } else if (montoAbonoEnviar > 0) {
+                alert(`Reserva creada correctamente. Abono inicial: ${formatoMoneda(montoAbonoEnviar)}.`);
             }
         } else {
             const fallback = idEdicion ? 'No se pudo actualizar la reserva.' : 'No se pudo crear la reserva.';
@@ -3788,6 +3915,185 @@ async function toggleUsuarioActivo(id, activar, desdeEdicion = false) {
     }
 }
 
+function actualizarPreviewAbonoReserva() {
+    const input = document.getElementById('montoAbonoReserva');
+    const preview = document.getElementById('previewAbonoReserva');
+    if (!input || !preview) return;
+    const abonadoActual = parseFloat(input.dataset.abonadoActual) || 0;
+    const saldoMax = parseFloat(input.dataset.saldoMax) || 0;
+    const extra = parseFloat(input.value);
+    if (!Number.isFinite(extra) || extra <= 0) {
+        preview.textContent = 'Este valor se suma al abonado ya registrado.';
+        return;
+    }
+    const nuevoAbonado = Math.min(abonadoActual + extra, abonadoActual + saldoMax);
+    let texto = `Nuevo abonado: ${formatoMoneda(nuevoAbonado)} (${formatoMoneda(abonadoActual)} + ${formatoMoneda(extra)})`;
+    if (extra > saldoMax + 0.005) {
+        texto += `. El máximo adicional es ${formatoMoneda(saldoMax)}.`;
+    }
+    preview.textContent = texto;
+}
+
+function enlazarPreviewAbonoReserva() {
+    if (window.__previewAbonoOk) return;
+    window.__previewAbonoOk = true;
+    const input = document.getElementById('montoAbonoReserva');
+    if (input) {
+        input.addEventListener('input', actualizarPreviewAbonoReserva);
+    }
+}
+
+function abrirModalAbonoReserva(tipo, id) {
+    enlazarPreviewAbonoReserva();
+    const esChin = tipo === 'chinchorro';
+    const r = esChin
+        ? reservasChinchorros.find((x) => Number(x.id) === Number(id))
+        : reservas.find((x) => Number(x.id) === Number(id));
+    if (!r) {
+        alert('No se encontró la reserva.');
+        return;
+    }
+    const fnTotal = esChin ? valorMonetarioReservaChinchorro : valorMonetarioReservaHabitacion;
+    const fnSaldo = esChin ? saldoReservaChinchorro : saldoReservaHabitacion;
+    const total = fnTotal(r);
+    const saldo = fnSaldo(r);
+    const abonado = montoAbonadoReserva(r);
+    if (saldo <= 0.005) {
+        alert('Esta reserva ya está totalizada.');
+        return;
+    }
+    const etiqueta = esChin ? etiquetaChinchorroReserva(r) : etiquetaHabitacionReserva(r);
+    const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim();
+    document.getElementById('abonoReservaTipo').value = tipo;
+    document.getElementById('abonoReservaId').value = String(id);
+    document.getElementById('tituloModalAbono').textContent = esChin ? 'Abonar reserva de chinchorro' : 'Abonar reserva de habitación';
+    document.getElementById('resumenAbonoReserva').innerHTML =
+        `<strong>${escapeHtmlCal(etiqueta)}</strong> · ${escapeHtmlCal(huesped || 'Huésped')}<br>` +
+        `Total: <strong>${escapeHtmlCal(formatoMoneda(total))}</strong> · ` +
+        `Abonado: <strong>${escapeHtmlCal(formatoMoneda(abonado))}</strong> · ` +
+        `Saldo: <strong>${escapeHtmlCal(formatoMoneda(saldo))}</strong>`;
+    const input = document.getElementById('montoAbonoReserva');
+    input.value = '';
+    input.removeAttribute('max');
+    input.dataset.abonadoActual = String(abonado);
+    input.dataset.saldoMax = String(saldo);
+    actualizarPreviewAbonoReserva();
+    document.getElementById('modalAbonoReserva').classList.add('active');
+    requestAnimationFrame(() => input.focus());
+}
+
+function mostrarModalAbonoHabitacion(id) {
+    abrirModalAbonoReserva('habitacion', id);
+}
+
+function mostrarModalAbonoChinchorro(id) {
+    abrirModalAbonoReserva('chinchorro', id);
+}
+
+async function confirmarAbonoReserva(event) {
+    event.preventDefault();
+    const tipo = document.getElementById('abonoReservaTipo').value;
+    const id = parseInt(document.getElementById('abonoReservaId').value, 10);
+    const monto = parseFloat(document.getElementById('montoAbonoReserva').value);
+    if (!Number.isFinite(id) || id < 1) {
+        alert('Reserva no válida');
+        return;
+    }
+    if (!Number.isFinite(monto) || monto <= 0) {
+        alert('Indique un monto de abono mayor a cero');
+        return;
+    }
+    const input = document.getElementById('montoAbonoReserva');
+    const abonadoActual = parseFloat(input && input.dataset.abonadoActual) || 0;
+    const saldoMax = parseFloat(input && input.dataset.saldoMax) || 0;
+    if (monto > saldoMax + 0.005) {
+        if (!confirm(`El abono (${formatoMoneda(monto)}) supera el saldo (${formatoMoneda(saldoMax)}). Se registrará solo ${formatoMoneda(saldoMax)}. ¿Continuar?`)) {
+            return;
+        }
+    }
+    const base = tipo === 'chinchorro' ? 'reservas-chinchorros' : 'reservas';
+    try {
+        const response = await fetchWithAuth(`${API_URL}/${base}/${id}/abono`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ monto, monto_abonado: monto })
+        });
+        if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            cerrarModal('modalAbonoReserva');
+            if (tipo === 'chinchorro') {
+                cargarReservasChinchorros();
+            } else {
+                cargarReservas();
+            }
+            renderIndicadoresFinanciero();
+            const nuevoAbonado = data.monto_abonado != null ? formatoMoneda(data.monto_abonado) : '';
+            const saldoRest = data.saldo != null ? formatoMoneda(data.saldo) : '';
+            alert(
+                nuevoAbonado
+                    ? `Abono registrado. Nuevo abonado: ${nuevoAbonado}${saldoRest ? ` · Saldo: ${saldoRest}` : ''}`
+                    : 'Abono registrado correctamente.'
+            );
+        } else {
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo registrar el abono.');
+            alert('Error: ' + msg);
+        }
+    } catch (error) {
+        alert('Error al registrar el abono');
+        console.error(error);
+    }
+}
+
+async function totalizarReservaPago(tipo, id) {
+    const esChin = tipo === 'chinchorro';
+    const r = esChin
+        ? reservasChinchorros.find((x) => Number(x.id) === Number(id))
+        : reservas.find((x) => Number(x.id) === Number(id));
+    if (!r) {
+        alert('No se encontró la reserva.');
+        return;
+    }
+    const fnSaldo = esChin ? saldoReservaChinchorro : saldoReservaHabitacion;
+    const saldo = fnSaldo(r);
+    if (saldo <= 0.005) {
+        alert('Esta reserva ya está totalizada.');
+        return;
+    }
+    if (!confirm(`¿Registrar el pago completo de ${formatoMoneda(saldo)} y totalizar la reserva?`)) {
+        return;
+    }
+    const base = esChin ? 'reservas-chinchorros' : 'reservas';
+    try {
+        const response = await fetchWithAuth(`${API_URL}/${base}/${id}/totalizar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+            if (esChin) {
+                cargarReservasChinchorros();
+            } else {
+                cargarReservas();
+            }
+            renderIndicadoresFinanciero();
+            alert('Reserva totalizada correctamente.');
+        } else {
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo totalizar la reserva.');
+            alert('Error: ' + msg);
+        }
+    } catch (error) {
+        alert('Error al totalizar la reserva');
+        console.error(error);
+    }
+}
+
+function totalizarReservaHabitacionPago(id) {
+    totalizarReservaPago('habitacion', id);
+}
+
+function totalizarReservaChinchorroPago(id) {
+    totalizarReservaPago('chinchorro', id);
+}
+
 // ========== FUNCIONES DE MODALES ==========
 function cerrarModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
@@ -3817,6 +4123,12 @@ function cerrarModal(modalId) {
         document.getElementById('idReservaChinchorroEdicion').value = '';
         const tit = document.getElementById('tituloModalReservaChin');
         if (tit) tit.textContent = 'Reservar chinchorro';
+        establecerModoModalReservaChin(false);
+    }
+    if (modalId === 'modalAbonoReserva') {
+        document.getElementById('formAbonoReserva').reset();
+        document.getElementById('abonoReservaTipo').value = '';
+        document.getElementById('abonoReservaId').value = '';
     }
 }
 
