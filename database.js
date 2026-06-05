@@ -103,7 +103,8 @@ function initDatabase() {
       'ALTER TABLE hotel ADD COLUMN color_secundario TEXT',
       'ALTER TABLE hotel ADD COLUMN color_acento TEXT',
       'ALTER TABLE hotel ADD COLUMN color_titulo TEXT',
-      'ALTER TABLE hotel ADD COLUMN fondo_imagen_url TEXT'
+      'ALTER TABLE hotel ADD COLUMN fondo_imagen_url TEXT',
+      'ALTER TABLE hotel ADD COLUMN logo_url TEXT'
     ];
     hotelThemeMigrations.forEach((sql) => {
       db.run(sql, (e) => {
@@ -454,7 +455,7 @@ function ensureHotelThemeColumns(callback) {
       return callback(err);
     }
     const have = new Set(rows.map((r) => r.name));
-    const cols = ['color_primario', 'color_secundario', 'color_acento', 'color_titulo', 'fondo_imagen_url'];
+    const cols = ['color_primario', 'color_secundario', 'color_acento', 'color_titulo', 'fondo_imagen_url', 'logo_url'];
     const sqls = cols
       .filter((c) => !have.has(c))
       .map((c) => `ALTER TABLE hotel ADD COLUMN ${c} TEXT`);
@@ -470,6 +471,27 @@ function ensureHotelThemeColumns(callback) {
       });
     }
     runNext(0);
+  });
+}
+
+function updateHotelLogoUrl(logo_url, callback) {
+  ensureHotelRow((eRow) => {
+    if (eRow) {
+      return callback(eRow);
+    }
+    ensureHotelThemeColumns((err) => {
+      if (err) {
+        return callback(err);
+      }
+      db.run(
+        `UPDATE hotel
+         SET logo_url = ?,
+             fecha_actualizacion = CURRENT_TIMESTAMP
+         WHERE id = (SELECT id FROM hotel ORDER BY id DESC LIMIT 1)`,
+        [logo_url],
+        callback
+      );
+    });
   });
 }
 
@@ -1533,6 +1555,7 @@ module.exports = {
   updateHotelNombre,
   updateHotelVistas,
   updateHotelApariencia,
+  updateHotelLogoUrl,
   getAllHabitaciones,
   getHabitacionById,
   createHabitacion,

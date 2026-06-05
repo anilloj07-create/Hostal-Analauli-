@@ -1125,6 +1125,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             nombreArchivoFondo.textContent = archivo ? `Seleccionado: ${archivo.name}` : 'Ningún archivo seleccionado';
         });
     }
+    const inputArchivoLogo = document.getElementById('temaLogoArchivo');
+    const nombreArchivoLogo = document.getElementById('temaLogoArchivoNombre');
+    if (inputArchivoLogo && nombreArchivoLogo) {
+        inputArchivoLogo.addEventListener('change', () => {
+            const archivo = inputArchivoLogo.files && inputArchivoLogo.files[0];
+            nombreArchivoLogo.textContent = archivo ? `Seleccionado: ${archivo.name}` : 'Ningún archivo seleccionado';
+        });
+    }
 });
 
 // ========== FUNCIONES DE NAVEGACIÓN ==========
@@ -1525,6 +1533,104 @@ function rellenarCamposTemaDesdeHotel(data) {
     const elFondo = document.getElementById('temaFondoImagenUrl');
     if (elFondo) {
         elFondo.value = data && data.fondo_imagen_url ? String(data.fondo_imagen_url) : '';
+    }
+    const elLogo = document.getElementById('temaLogoUrl');
+    if (elLogo) {
+        elLogo.value = data && data.logo_url ? String(data.logo_url) : '';
+    }
+    if (typeof TemaHotel !== 'undefined' && TemaHotel.aplicarLogo) {
+        TemaHotel.aplicarLogo(document, data);
+    }
+}
+
+function abrirSelectorLogoArchivo() {
+    if (!usuarioEsAdministrador()) {
+        alert('Solo el administrador puede subir el logotipo.');
+        return;
+    }
+    const input = document.getElementById('temaLogoArchivo');
+    if (input) {
+        input.click();
+    }
+}
+
+async function subirLogoArchivoSeleccionado() {
+    if (!usuarioEsAdministrador()) {
+        alert('Solo el administrador puede subir el logotipo.');
+        return;
+    }
+    const input = document.getElementById('temaLogoArchivo');
+    if (!input || !input.files || input.files.length === 0) {
+        alert('Primero seleccione una imagen.');
+        return;
+    }
+    const archivo = input.files[0];
+    const formData = new FormData();
+    formData.append('logo', archivo);
+    try {
+        const response = await fetchWithAuth(`${API_URL}/hotel/logo-upload`, {
+            method: 'POST',
+            body: formData
+        });
+        if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            const url = data && data.logo_url ? String(data.logo_url) : '';
+            if (url) {
+                const elLogo = document.getElementById('temaLogoUrl');
+                if (elLogo) {
+                    elLogo.value = url;
+                }
+            }
+            const inputLogo = document.getElementById('temaLogoArchivo');
+            if (inputLogo) {
+                inputLogo.value = '';
+            }
+            const nombreArchivoLogo = document.getElementById('temaLogoArchivoNombre');
+            if (nombreArchivoLogo) {
+                nombreArchivoLogo.textContent = 'Ningún archivo seleccionado';
+            }
+            await cargarNombreHotel();
+            alert('Logotipo subido y aplicado correctamente.');
+        } else {
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo subir el logotipo.');
+            alert(msg);
+        }
+    } catch (error) {
+        if (error && error.message === 'Forbidden') return;
+        alert('Error al subir el logotipo.');
+        console.error(error);
+    }
+}
+
+async function quitarLogoHotel() {
+    if (!usuarioEsAdministrador()) {
+        alert('Solo el administrador puede quitar el logotipo.');
+        return;
+    }
+    if (!confirm('¿Quitar el logotipo personalizado y volver al ícono predeterminado?')) {
+        return;
+    }
+    try {
+        const response = await fetchWithAuth(`${API_URL}/hotel/tema`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ logo_url: '' })
+        });
+        if (response.ok) {
+            const elLogo = document.getElementById('temaLogoUrl');
+            if (elLogo) {
+                elLogo.value = '';
+            }
+            await cargarNombreHotel();
+            alert('Logotipo eliminado.');
+        } else {
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo quitar el logotipo.');
+            alert(msg);
+        }
+    } catch (error) {
+        if (error && error.message === 'Forbidden') return;
+        alert('Error al quitar el logotipo.');
+        console.error(error);
     }
 }
 
@@ -1955,7 +2061,8 @@ async function guardarTemaApariencia() {
         color_secundario: document.getElementById('temaColorSecundario').value,
         color_acento: document.getElementById('temaColorAcento').value,
         color_titulo: document.getElementById('temaColorTitulo').value,
-        fondo_imagen_url: document.getElementById('temaFondoImagenUrl').value.trim()
+        fondo_imagen_url: document.getElementById('temaFondoImagenUrl').value.trim(),
+        logo_url: document.getElementById('temaLogoUrl').value.trim()
     };
     try {
         const response = await fetchWithAuth(`${API_URL}/hotel/tema`, {
@@ -1990,7 +2097,7 @@ async function restaurarTemaApariencia() {
         alert('Solo el administrador puede restaurar la apariencia.');
         return;
     }
-    if (!confirm('¿Restaurar apariencia predeterminada (colores y fondo)?')) {
+    if (!confirm('¿Restaurar apariencia predeterminada (colores, fondo y logotipo)?')) {
         return;
     }
     try {

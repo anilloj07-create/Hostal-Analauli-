@@ -135,10 +135,77 @@
         return aplicarNombre(doc, { nombre });
     }
 
+    function mostrarLogoEnImagen(img, logo, alt, alOk, alError) {
+        if (!img) return;
+        img.onload = () => {
+            img.hidden = false;
+            if (alOk) alOk();
+        };
+        img.onerror = () => {
+            img.hidden = true;
+            img.removeAttribute('src');
+            if (alError) alError();
+        };
+        img.alt = alt || 'Logotipo';
+        img.src = logo;
+    }
+
+    function ocultarLogoEnImagen(img) {
+        if (!img) return;
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('src');
+        img.hidden = true;
+    }
+
+    function aplicarLogo(doc, paleta) {
+        const logo = urlFondoValida(paleta && paleta.logo_url);
+        const nombre = nombreVisible(paleta);
+        const loginImg = doc.getElementById('loginHotelLogo');
+        const loginIcon = doc.getElementById('loginHotelIconDefault');
+        const headerImg = doc.getElementById('hotelLogoImg');
+        const previewImg = doc.getElementById('temaLogoPreview');
+        const previewPlaceholder = doc.getElementById('temaLogoPreviewPlaceholder');
+
+        const mostrarIconoLogin = () => {
+            if (loginIcon) loginIcon.hidden = false;
+        };
+        const ocultarIconoLogin = () => {
+            if (loginIcon) loginIcon.hidden = true;
+        };
+        const mostrarPlaceholderPreview = () => {
+            if (previewPlaceholder) previewPlaceholder.hidden = false;
+        };
+        const ocultarPlaceholderPreview = () => {
+            if (previewPlaceholder) previewPlaceholder.hidden = true;
+        };
+
+        if (!logo) {
+            ocultarLogoEnImagen(loginImg);
+            mostrarIconoLogin();
+            ocultarLogoEnImagen(headerImg);
+            ocultarLogoEnImagen(previewImg);
+            mostrarPlaceholderPreview();
+            return;
+        }
+
+        const logoSrc = logo.includes('?') ? logo : `${logo}?v=${Date.now()}`;
+        mostrarLogoEnImagen(loginImg, logoSrc, `Logotipo de ${nombre}`, ocultarIconoLogin, mostrarIconoLogin);
+        mostrarLogoEnImagen(headerImg, logoSrc, `Logotipo de ${nombre}`);
+        mostrarLogoEnImagen(
+            previewImg,
+            logoSrc,
+            'Vista previa del logotipo',
+            ocultarPlaceholderPreview,
+            mostrarPlaceholderPreview
+        );
+    }
+
     /** Colores + nombre unificado (login e index). */
     function aplicarMarcaHotel(doc, datos) {
         aplicar(doc, datos);
         aplicarFondo(doc, datos);
+        aplicarLogo(doc, datos);
         return aplicarNombre(doc, datos);
     }
 
@@ -150,6 +217,7 @@
         aplicarNombre,
         aplicarNombreDesdeStorage,
         aplicarMarcaHotel,
+        aplicarLogo,
         aplicarFondo,
         urlFondoValida,
         guardarNombreEnStorage,

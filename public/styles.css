@@ -369,6 +369,46 @@ body::before {
     align-items: center;
 }
 
+.hotel-logo-header {
+    max-height: 56px;
+    max-width: 120px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.tema-logo-preview-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 96px;
+    margin: 12px 0 16px;
+    padding: 16px;
+    border: 2px dashed #ddd;
+    border-radius: 12px;
+    background: #fafafa;
+}
+
+.tema-logo-preview {
+    max-width: 160px;
+    max-height: 96px;
+    object-fit: contain;
+}
+
+.tema-logo-preview-placeholder {
+    font-size: 1.1rem;
+    color: #777;
+}
+
+.tema-logo-item {
+    max-width: 900px;
+}
+
+.tema-logo-upload {
+    align-items: center;
+}
+
 .tema-acciones {
     display: flex;
     flex-wrap: wrap;

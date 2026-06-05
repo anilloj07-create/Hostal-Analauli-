@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=27">
+    <link rel="stylesheet" href="styles.css?v=28">
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
             <div class="hotel-name-section">
+                <img id="hotelLogoImg" class="hotel-logo-header" alt="" hidden>
                 <h1 id="hotelNombre">Mi Hotel</h1>
                 <div class="header-actions">
                     <button type="button" class="btn-logout" onclick="cerrarSesion()" title="Cerrar Sesión">🚪 Cerrar Sesión</button>
@@ -355,6 +356,30 @@
             </div>
 
             <div id="bloqueTemaApariencia" class="solo-admin oculto-sin-permiso">
+                <h3 class="subsection-title">Logotipo del establecimiento</h3>
+                <p class="section-intro" style="margin-top:-6px">
+                    Reemplace el ícono de hotel 🏨 que aparece <strong>arriba del nombre</strong> en el inicio de sesión y en la cabecera de la aplicación.
+                </p>
+                <div class="tema-logo-preview-wrap">
+                    <img id="temaLogoPreview" class="tema-logo-preview" alt="" hidden>
+                    <span id="temaLogoPreviewPlaceholder" class="tema-logo-preview-placeholder">🏨 Sin logotipo personalizado</span>
+                </div>
+                <div class="form-group tema-logo-item">
+                    <label for="temaLogoUrl">Logotipo (URL)</label>
+                    <input
+                        type="url"
+                        id="temaLogoUrl"
+                        placeholder="https://ejemplo.com/logo.png o /uploads/logos/mi-logo.png">
+                    <small class="form-hint">Acepte URL `http/https` o ruta local iniciando por `/`.</small>
+                </div>
+                <div class="tema-acciones tema-logo-upload">
+                    <input type="file" id="temaLogoArchivo" accept="image/*" hidden>
+                    <button type="button" class="btn-secondary" onclick="abrirSelectorLogoArchivo()">Buscar imagen en el equipo</button>
+                    <span id="temaLogoArchivoNombre" class="muted">Ningún archivo seleccionado</span>
+                    <button type="button" class="btn-primary" onclick="subirLogoArchivoSeleccionado()">Subir logotipo</button>
+                    <button type="button" class="btn-secondary" onclick="quitarLogoHotel()">Quitar logotipo</button>
+                </div>
+
                 <h3 class="subsection-title">Apariencia (colores)</h3>
                 <p class="section-intro" style="margin-top:-6px">
                     Solo el <strong>administrador</strong> puede cambiar los colores y el fondo. Se guardan en el sistema y se aplican en toda la aplicación y en la pantalla de inicio de sesión. Use formato hexadecimal con el selector de color.
@@ -951,7 +976,7 @@
         </div>
     </div>
 
-    <script src="theme-apply.js?v=5"></script>
-    <script src="app.js?v=31"></script>
+    <script src="theme-apply.js?v=7"></script>
+    <script src="app.js?v=33"></script>
 </body>
 </html>

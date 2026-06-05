@@ -16,8 +16,14 @@ const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : nul
 const FONDO_UPLOAD_DIR = DATA_DIR
   ? path.join(DATA_DIR, 'uploads', 'fondos')
   : path.join(__dirname, 'public', 'uploads', 'fondos');
+const LOGO_UPLOAD_DIR = DATA_DIR
+  ? path.join(DATA_DIR, 'uploads', 'logos')
+  : path.join(__dirname, 'public', 'uploads', 'logos');
 if (!fs.existsSync(FONDO_UPLOAD_DIR)) {
   fs.mkdirSync(FONDO_UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(LOGO_UPLOAD_DIR)) {
+  fs.mkdirSync(LOGO_UPLOAD_DIR, { recursive: true });
 }
 const storageFondo = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, FONDO_UPLOAD_DIR),
@@ -30,6 +36,24 @@ const storageFondo = multer.diskStorage({
 const uploadFondo = multer({
   storage: storageFondo,
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if ((file.mimetype || '').startsWith('image/')) {
+      return cb(null, true);
+    }
+    cb(new Error('Solo se permiten archivos de imagen.'));
+  }
+});
+const storageLogo = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, LOGO_UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'].includes(ext) ? ext : '.png';
+    cb(null, `logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+  }
+});
+const uploadLogo = multer({
+  storage: storageLogo,
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if ((file.mimetype || '').startsWith('image/')) {
       return cb(null, true);
@@ -449,7 +473,8 @@ app.get('/api/hotel/apariencia', (req, res) => {
         color_secundario: null,
         color_acento: null,
         color_titulo: null,
-        fondo_imagen_url: null
+        fondo_imagen_url: null,
+        logo_url: null
       });
     }
     res.json({
@@ -458,7 +483,8 @@ app.get('/api/hotel/apariencia', (req, res) => {
       color_secundario: row.color_secundario || null,
       color_acento: row.color_acento || null,
       color_titulo: row.color_titulo || null,
-      fondo_imagen_url: row.fondo_imagen_url || null
+      fondo_imagen_url: row.fondo_imagen_url || null,
+      logo_url: row.logo_url || null
     });
   });
 });
@@ -484,9 +510,14 @@ app.put('/api/hotel/tema', requireAuth, (req, res) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
-      return res.json({
-        message: 'Colores restaurados a los predeterminados',
-        reiniciar: true
+      db.updateHotelLogoUrl(null, (errLogo) => {
+        if (errLogo) {
+          return res.status(500).json({ error: errLogo.message });
+        }
+        return res.json({
+          message: 'Apariencia restaurada a los predeterminados',
+          reiniciar: true
+        });
       });
     });
     return;
@@ -536,19 +567,52 @@ app.put('/api/hotel/tema', requireAuth, (req, res) => {
       }
     }
 
-    db.updateHotelApariencia(next[0], next[1], next[2], next[3], fondoImagenUrl, (err2) => {
-      if (err2) {
-        return res.status(500).json({ error: err2.message });
-      }
+    const aplicarRespuestaTema = (logoUrl) => {
       res.json({
         message: 'Colores actualizados',
         color_primario: next[0],
         color_secundario: next[1],
         color_acento: next[2],
         color_titulo: next[3],
-        fondo_imagen_url: fondoImagenUrl
+        fondo_imagen_url: fondoImagenUrl,
+        logo_url: logoUrl != null ? logoUrl : row.logo_url || null
       });
-    });
+    };
+
+    const guardarColores = (logoUrlFinal) => {
+      db.updateHotelApariencia(next[0], next[1], next[2], next[3], fondoImagenUrl, (err2) => {
+        if (err2) {
+          return res.status(500).json({ error: err2.message });
+        }
+        aplicarRespuestaTema(logoUrlFinal);
+      });
+    };
+
+    if ('logo_url' in body) {
+      const logoRaw = body.logo_url;
+      if (logoRaw === null || String(logoRaw).trim() === '') {
+        return db.updateHotelLogoUrl(null, (errLogo) => {
+          if (errLogo) {
+            return res.status(500).json({ error: errLogo.message });
+          }
+          guardarColores(null);
+        });
+      }
+      const logoNorm = normalizeBackgroundImageUrl(logoRaw);
+      if (!logoNorm) {
+        return res.status(400).json({
+          error: 'logo_url debe ser URL http/https o ruta local iniciando por /.'
+        });
+      }
+      return db.updateHotelLogoUrl(logoNorm, (errLogo) => {
+        if (errLogo) {
+          return res.status(500).json({ error: errLogo.message });
+        }
+        guardarColores(logoNorm);
+      });
+    }
+
+    guardarColores(row.logo_url || null);
   });
 });
 
@@ -571,6 +635,28 @@ app.put('/api/hotel/vistas', requireAuth, requireAdmin, (req, res) => {
       message: 'Vistas guardadas',
       vista_habitaciones: rawH,
       vista_chinchorros: rawC
+    });
+  });
+});
+
+/** Subir logotipo desde archivo local (admin). */
+app.post('/api/hotel/logo-upload', requireAuth, requireAdmin, (req, res) => {
+  uploadLogo.single('logo')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'El logotipo supera el límite de 2MB.' });
+      }
+      return res.status(400).json({ error: err.message || 'No se pudo subir el logotipo.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Debe seleccionar una imagen.' });
+    }
+    const logoUrl = `/uploads/logos/${req.file.filename}`;
+    db.updateHotelLogoUrl(logoUrl, (eSave) => {
+      if (eSave) {
+        return res.status(500).json({ error: eSave.message });
+      }
+      res.json({ message: 'Logotipo cargado', logo_url: logoUrl });
     });
   });
 });
