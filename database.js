@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 /** Carpeta de datos: en Render con disco use DATA_DIR=/data; si no, ./data en el proyecto. */
 const DATA_DIR = process.env.DATA_DIR
@@ -362,13 +363,12 @@ function initDatabase() {
       } else {
         db.get("SELECT COUNT(*) as count FROM usuarios", (err, row) => {
           if (!err && row.count === 0) {
-            const bcrypt = require('bcrypt');
             const defaultPassword = 'admin123';
-            bcrypt.hash(defaultPassword, 10, (err, hash) => {
+            hashPasswordLogin(defaultPassword, (err, hash, sha) => {
               if (!err) {
                 db.run(
-                  "INSERT INTO usuarios (username, password, nombre, rol) VALUES (?, ?, ?, ?)",
-                  ['admin', hash, 'Administrador', 'administrador'],
+                  "INSERT INTO usuarios (username, password, password_sha256_ci, nombre, rol) VALUES (?, ?, ?, ?, ?)",
+                  ['admin', hash, sha, 'Administrador', 'administrador'],
                   (err) => {
                     if (err) {
                       console.error('Error al crear usuario por defecto:', err);
@@ -387,6 +387,11 @@ function initDatabase() {
     db.run(`ALTER TABLE usuarios ADD COLUMN rol TEXT DEFAULT 'operador'`, (err) => {
       if (err && !String(err.message).toLowerCase().includes('duplicate column')) {
         console.error('Migración columna rol:', err.message);
+      }
+    });
+    db.run(`ALTER TABLE usuarios ADD COLUMN password_sha256_ci TEXT`, (err) => {
+      if (err && !String(err.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración columna password_sha256_ci:', err.message);
       }
     });
     db.run(`ALTER TABLE usuarios ADD COLUMN activo INTEGER DEFAULT 1`, (err) => {
@@ -409,6 +414,12 @@ function initDatabase() {
           });
         });
       });
+    });
+
+    migrarContrasenasSinMayusculasTodosRoles((migErr) => {
+      if (migErr) {
+        console.warn('Migración claves sin mayúsculas:', migErr.message);
+      }
     });
   });
 }
@@ -1486,14 +1497,13 @@ function createUser(username, password, nombre, email, rol, callback) {
     if (taken) {
       return callback(new Error('Ya existe un usuario con ese nombre (sin distinguir mayúsculas)'));
     }
-    const bcrypt = require('bcrypt');
-    bcrypt.hash(password, 10, (err, hash) => {
+    hashPasswordLogin(password, (err, hash, sha) => {
       if (err) {
         callback(err);
       } else {
         db.run(
-          "INSERT INTO usuarios (username, password, nombre, email, rol, activo) VALUES (?, ?, ?, ?, ?, 1)",
-          [login, hash, nombre || '', email || '', r],
+          "INSERT INTO usuarios (username, password, password_sha256_ci, nombre, email, rol, activo) VALUES (?, ?, ?, ?, ?, ?, 1)",
+          [login, hash, sha, nombre || '', email || '', r],
           function(err) {
             if (err) {
               callback(err);
@@ -1516,13 +1526,64 @@ function updateUserDatos(id, nombre, email, rol, callback) {
   );
 }
 
-function updateUserPasswordById(id, newPassword, callback) {
+/** Normaliza la clave para comparación/guardado sin distinguir mayúsculas (todos los roles). */
+function normalizarPasswordLogin(password) {
+  return String(password || '').toLocaleLowerCase('es');
+}
+
+function sha256PasswordCi(password) {
+  return crypto
+    .createHash('sha256')
+    .update(normalizarPasswordLogin(password))
+    .digest('hex');
+}
+
+function variantesMayusculasClave(str, maxBitsLetras = 8) {
+  const s = String(str || '');
+  const folded = normalizarPasswordLogin(s);
+  const upper = s.toLocaleUpperCase('es');
+  const indices = [];
+  for (let i = 0; i < s.length; i++) {
+    if (/[a-zA-Z]/.test(s[i])) indices.push(i);
+  }
+  if (!indices.length || indices.length > maxBitsLetras) {
+    return [...new Set([s, folded, upper])];
+  }
+  const chars = s.split('');
+  const variants = new Set();
+  const total = 1 << indices.length;
+  for (let mask = 0; mask < total; mask++) {
+    const copy = chars.slice();
+    indices.forEach((idx, bit) => {
+      const ch = copy[idx];
+      copy[idx] = (mask >> bit) & 1 ? ch.toUpperCase() : ch.toLowerCase();
+    });
+    variants.add(copy.join(''));
+  }
+  variants.add(folded);
+  variants.add(upper);
+  return [...variants];
+}
+
+function hashPasswordLogin(password, callback) {
   const bcrypt = require('bcrypt');
-  bcrypt.hash(newPassword, 10, (err, hash) => {
+  const folded = normalizarPasswordLogin(password);
+  const sha = sha256PasswordCi(password);
+  bcrypt.hash(folded, 10, (err, hash) => {
+    callback(err, hash, sha);
+  });
+}
+
+function updateUserPasswordById(id, newPassword, callback) {
+  hashPasswordLogin(newPassword, (err, hash, sha) => {
     if (err) {
       callback(err);
     } else {
-      db.run("UPDATE usuarios SET password = ? WHERE id = ?", [hash, id], callback);
+      db.run(
+        'UPDATE usuarios SET password = ?, password_sha256_ci = ? WHERE id = ?',
+        [hash, sha, id],
+        callback
+      );
     }
   });
 }
@@ -1541,9 +1602,150 @@ function countAdminsActiveExcept(exceptId, callback) {
   );
 }
 
-function verifyPassword(password, hash, callback) {
+function verifyPassword(password, hash, passwordShaCi, callback) {
+  if (typeof passwordShaCi === 'function') {
+    callback = passwordShaCi;
+    passwordShaCi = null;
+  }
+  const raw = String(password || '');
+  if (!hash) {
+    return callback(null, false);
+  }
+  if (passwordShaCi && sha256PasswordCi(raw) === passwordShaCi) {
+    return callback(null, true);
+  }
+
   const bcrypt = require('bcrypt');
-  bcrypt.compare(password, hash, callback);
+  const variantes = variantesMayusculasClave(raw);
+  let i = 0;
+  const probar = () => {
+    if (i >= variantes.length) {
+      return callback(null, false);
+    }
+    const intento = variantes[i++];
+    bcrypt.compare(intento, hash, (err, ok) => {
+      if (err) {
+        return callback(err);
+      }
+      if (ok) {
+        return callback(null, true);
+      }
+      probar();
+    });
+  };
+  probar();
+}
+
+/** Guarda la clave normalizada para que futuros ingresos no distingan mayúsculas. */
+function syncPasswordHashNormalized(userId, password, callback) {
+  hashPasswordLogin(password, (err, hash, sha) => {
+    if (err) {
+      return callback(err);
+    }
+    db.run(
+      'UPDATE usuarios SET password = ?, password_sha256_ci = ? WHERE id = ?',
+      [hash, sha, userId],
+      callback
+    );
+  });
+}
+
+function candidatosMigracionClaveUsuario(user) {
+  const u = String(user.username || '').trim();
+  if (!u) return [];
+  const folded = normalizarPasswordLogin(u);
+  const lista = [u, folded, u.toUpperCase()];
+  if (folded === 'admin') {
+    lista.push('admin123');
+  }
+  return [...new Set(lista)];
+}
+
+/** Intenta normalizar el hash si la clave coincide con candidatos conocidos (arranque). */
+function intentarMigrarHashClaveUsuario(user, callback) {
+  const candidatos = candidatosMigracionClaveUsuario(user);
+  if (!candidatos.length) {
+    return callback();
+  }
+  let i = 0;
+  const siguiente = () => {
+    if (i >= candidatos.length) {
+      return callback();
+    }
+    const clave = candidatos[i++];
+    verifyPassword(clave, user.password, user.password_sha256_ci, (err, ok) => {
+      if (err) {
+        return callback(err);
+      }
+      if (ok) {
+        return syncPasswordHashNormalized(user.id, clave, callback);
+      }
+      siguiente();
+    });
+  };
+  siguiente();
+}
+
+/** Migración única: administradores, operadores y cuentas futuras (al crear o al ingresar). */
+function migrarContrasenasSinMayusculasTodosRoles(callback) {
+  db.run(
+    `CREATE TABLE IF NOT EXISTS migraciones_app (
+      clave TEXT PRIMARY KEY,
+      aplicada_en DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    (errCreate) => {
+      if (errCreate) {
+        return callback(errCreate);
+      }
+      db.get(
+        `SELECT 1 AS ok FROM migraciones_app WHERE clave = 'pwd_insensitive_admin_operador_v1'`,
+        (err, row) => {
+          if (err) {
+            return callback(err);
+          }
+          if (row) {
+            return callback();
+          }
+          db.all(`SELECT id, username, password, rol FROM usuarios`, (e2, usuarios) => {
+            if (e2) {
+              return callback(e2);
+            }
+            const lista = usuarios || [];
+            if (!lista.length) {
+              return marcarMigracionClaves(callback);
+            }
+            let pend = lista.length;
+            const fin = (e) => {
+              if (e) {
+                console.warn('Migración clave usuario:', e.message || e);
+              }
+              pend -= 1;
+              if (pend <= 0) {
+                marcarMigracionClaves(callback);
+              }
+            };
+            lista.forEach((u) => {
+              intentarMigrarHashClaveUsuario(u, (e) => fin(e));
+            });
+          });
+        }
+      );
+    }
+  );
+}
+
+function marcarMigracionClaves(callback) {
+  db.run(
+    `INSERT OR IGNORE INTO migraciones_app (clave) VALUES ('pwd_insensitive_admin_operador_v1')`,
+    (e) => {
+      if (!e) {
+        console.log(
+          'Clave sin mayúsculas activa para administradores, operadores y usuarios nuevos.'
+        );
+      }
+      callback(e);
+    }
+  );
 }
 
 module.exports = {
@@ -1594,6 +1796,8 @@ module.exports = {
   setUserActivo,
   countAdminsActiveExcept,
   verifyPassword,
+  syncPasswordHashNormalized,
+  normalizarPasswordLogin,
   getAllChinchorros,
   getChinchorroById,
   chinchorroTieneReservaActivaHoy,

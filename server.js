@@ -123,13 +123,14 @@ function requireAdmin(req, res, next) {
 
 // ========== RUTAS DE AUTENTICACIÓN (sin protección) ==========
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '').trim();
+
   if (!username || !password) {
     return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
   }
-  
-  db.getUserByUsername(String(username).trim(), (err, user) => {
+
+  db.getUserByUsername(username, (err, user) => {
     if (err) {
       return res.status(500).json({ error: 'Error en el servidor' });
     }
@@ -146,7 +147,7 @@ app.post('/api/login', (req, res) => {
       });
     }
     
-    db.verifyPassword(password, user.password, (err, isValid) => {
+    db.verifyPassword(password, user.password, user.password_sha256_ci, (err, isValid) => {
       if (err) {
         return res.status(500).json({ error: 'Error en el servidor' });
       }
@@ -154,6 +155,9 @@ app.post('/api/login', (req, res) => {
       if (!isValid) {
         return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
       }
+
+      // Administradores y operadores: normaliza el hash para clave sin mayúsculas.
+      db.syncPasswordHashNormalized(user.id, password, () => {});
 
       const rol = db.normalizarRolUsuario(user.rol, user.username);
 
@@ -238,7 +242,7 @@ app.put('/api/auth/mi-password', requireAuth, (req, res) => {
     if (err || !user) {
       return res.status(500).json({ error: 'Usuario no encontrado' });
     }
-    db.verifyPassword(password_actual, user.password, (err, ok) => {
+    db.verifyPassword(password_actual, user.password, user.password_sha256_ci, (err, ok) => {
       if (err || !ok) {
         return res.status(400).json({ error: 'La contraseña actual no es correcta' });
       }
