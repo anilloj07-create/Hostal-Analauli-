@@ -493,6 +493,299 @@ function botonesPagoReserva(r, tipo, fnSaldo) {
     `;
 }
 
+function urlAbsolutaRecurso(url) {
+    if (!url) return '';
+    const s = String(url).trim();
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('/')) return `${window.location.origin}${s}`;
+    return s;
+}
+
+function datosMarcaHotelParaFactura() {
+    const d = datosHotelCache || {};
+    const elNombre = document.getElementById('hotelNombre');
+    const nombre =
+        (d.nombre && String(d.nombre).trim()) ||
+        (elNombre && String(elNombre.textContent || '').trim()) ||
+        'Mi Hotel';
+    return {
+        nombre,
+        logoUrl: urlAbsolutaRecurso(d.logo_url)
+    };
+}
+
+let facturaReservaDocumentoCache = '';
+
+function estilosFacturaReservaHtml() {
+    return `
+        @page { size: 80mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 3mm 2mm;
+            width: 80mm;
+            max-width: 80mm;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            line-height: 1.35;
+            color: #000;
+            background: #fff;
+        }
+        .factura-ticket { width: 100%; }
+        .factura-cabecera { text-align: center; padding-bottom: 2px; }
+        .factura-logo {
+            display: block;
+            margin: 0 auto 4px;
+            max-width: 52mm;
+            max-height: 16mm;
+            object-fit: contain;
+        }
+        .factura-logo-placeholder { font-size: 1.6rem; line-height: 1; margin-bottom: 4px; }
+        .factura-cabecera h1 {
+            margin: 0 0 2px;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .factura-cabecera p { margin: 0; font-size: 10px; }
+        .factura-sep { border-top: 1px dashed #000; margin: 5px 0; }
+        .factura-seccion-titulo {
+            font-weight: bold;
+            text-align: center;
+            margin: 3px 0;
+            font-size: 10px;
+            letter-spacing: 0.05em;
+        }
+        .factura-linea {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 6px;
+            margin: 2px 0;
+            word-break: break-word;
+        }
+        .factura-linea > span:first-child { flex: 1; min-width: 0; }
+        .factura-linea > span:last-child { flex-shrink: 0; text-align: right; white-space: nowrap; }
+        .factura-linea--sub { padding-left: 2mm; font-size: 10px; }
+        .factura-linea--bloque { display: block; }
+        .factura-linea--bloque > span { display: block; }
+        .factura-linea--total { font-weight: bold; font-size: 12px; margin-top: 3px; }
+        .factura-linea--saldo { font-weight: bold; }
+        .factura-pie {
+            text-align: center;
+            font-size: 9px;
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px dashed #000;
+        }
+        @media print {
+            html, body { padding: 2mm 2mm; width: 80mm; }
+        }
+    `;
+}
+
+function construirFacturaReservaInnerHtml(r, tipo) {
+    const marca = datosMarcaHotelParaFactura();
+    const esChin = tipo === 'chinchorro';
+    const fnTotal = esChin ? valorMonetarioReservaChinchorro : valorMonetarioReservaHabitacion;
+    const fnSaldo = esChin ? saldoReservaChinchorro : saldoReservaHabitacion;
+    const total = fnTotal(r);
+    const abonado = Math.min(montoAbonadoReserva(r), total);
+    const saldo = fnSaldo(r);
+    const unidades = unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+    const tarifa = Number(esChin ? r.chinchorro_precio_diario : r.habitacion_precio_diario) || 0;
+    const unidadLabel = esChin ? etiquetaChinchorroReserva(r) : etiquetaHabitacionReserva(r);
+    const tipoUnidad = esChin ? 'Chinchorro' : 'Habitación';
+    const etiquetaPeriodo = esChin ? 'días' : 'noches';
+    const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—';
+    const fi = new Date(r.fecha_ingreso).toLocaleDateString('es-ES');
+    const fs = new Date(r.fecha_salida).toLocaleDateString('es-ES');
+    const hoy = new Date().toLocaleString('es-ES');
+    const prefijo = esChin ? 'CH' : 'HAB';
+    const logoHtml = marca.logoUrl
+        ? `<img src="${escapeHtmlCal(marca.logoUrl)}" alt="Logo" class="factura-logo">`
+        : `<div class="factura-logo-placeholder" aria-hidden="true">🏨</div>`;
+    const conceptoEstadia = `Estadía ${esChin ? 'chinchorro' : 'habitación'}`;
+    const detalleTarifa = `${unidades} ${etiquetaPeriodo} x ${escapeHtmlCal(formatoMoneda(tarifa))}`;
+    const lineaSaldo =
+        saldo > 0.005
+            ? `<div class="factura-linea factura-linea--saldo"><span>SALDO PENDIENTE</span><span>${escapeHtmlCal(formatoMoneda(saldo))}</span></div>`
+            : `<div class="factura-linea"><span>ESTADO PAGO</span><span>PAGADO</span></div>`;
+
+    return `
+    <div class="factura-ticket">
+        <header class="factura-cabecera">
+            ${logoHtml}
+            <h1>${escapeHtmlCal(marca.nombre)}</h1>
+            <p>COMPROBANTE DE RESERVA</p>
+        </header>
+        <div class="factura-sep"></div>
+        <div class="factura-linea"><span>NO. COMPROBANTE</span><span>${prefijo}-${r.id}</span></div>
+        <div class="factura-linea"><span>FECHA EMISION</span><span>${escapeHtmlCal(hoy)}</span></div>
+        <div class="factura-linea"><span>ESTADO</span><span>${escapeHtmlCal(r.estado || '—')}</span></div>
+        <div class="factura-sep"></div>
+        <div class="factura-seccion-titulo">DATOS DEL CLIENTE</div>
+        <div class="factura-linea"><span>HUESPED</span><span>${escapeHtmlCal(huesped)}</span></div>
+        <div class="factura-linea"><span>${tipoUnidad.toUpperCase()}</span><span>${escapeHtmlCal(unidadLabel)}</span></div>
+        <div class="factura-linea"><span>ADULTOS / NINOS</span><span>${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}</span></div>
+        <div class="factura-linea"><span>INGRESO</span><span>${escapeHtmlCal(fi)}</span></div>
+        <div class="factura-linea"><span>SALIDA</span><span>${escapeHtmlCal(fs)}</span></div>
+        <div class="factura-linea"><span>METODO PAGO</span><span>${escapeHtmlCal(r.metodo_pago || '—')}</span></div>
+        ${
+            r.observaciones
+                ? `<div class="factura-linea factura-linea--bloque"><span>OBS: ${escapeHtmlCal(r.observaciones)}</span></div>`
+                : ''
+        }
+        <div class="factura-sep"></div>
+        <div class="factura-seccion-titulo">DETALLE</div>
+        <div class="factura-linea"><span>${conceptoEstadia}</span><span>${escapeHtmlCal(formatoMoneda(total))}</span></div>
+        <div class="factura-linea factura-linea--sub"><span>${detalleTarifa}</span><span></span></div>
+        <div class="factura-sep"></div>
+        <div class="factura-linea factura-linea--total"><span>TOTAL</span><span>${escapeHtmlCal(formatoMoneda(total))}</span></div>
+        <div class="factura-linea"><span>ABONADO</span><span>${escapeHtmlCal(formatoMoneda(abonado))}</span></div>
+        ${lineaSaldo}
+        <footer class="factura-pie">
+            ${escapeHtmlCal(marca.nombre)}<br>
+            Gracias por su preferencia
+        </footer>
+    </div>`;
+}
+
+function construirFacturaReservaDocumento(r, tipo) {
+    const inner = construirFacturaReservaInnerHtml(r, tipo);
+    const prefijo = tipo === 'chinchorro' ? 'CH' : 'HAB';
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Factura reserva ${prefijo}-${r.id}</title>
+    <style>${estilosFacturaReservaHtml()}</style>
+</head>
+<body>${inner}</body>
+</html>`;
+}
+
+function esperarImagenesEnDocumento(doc, callback, tiempoMaxMs = 4000) {
+    const imgs = doc ? doc.querySelectorAll('img') : [];
+    if (!imgs.length) {
+        setTimeout(callback, 200);
+        return;
+    }
+    let pendientes = imgs.length;
+    let listo = false;
+    const finalizar = () => {
+        if (listo) return;
+        listo = true;
+        setTimeout(callback, 200);
+    };
+    const revisar = () => {
+        pendientes -= 1;
+        if (pendientes <= 0) finalizar();
+    };
+    imgs.forEach((img) => {
+        if (img.complete) revisar();
+        else {
+            img.addEventListener('load', revisar, { once: true });
+            img.addEventListener('error', revisar, { once: true });
+        }
+    });
+    setTimeout(finalizar, tiempoMaxMs);
+}
+
+function esperarImagenesEnContenedor(contenedor) {
+    return new Promise((resolve) => {
+        if (!contenedor) {
+            resolve();
+            return;
+        }
+        const imgs = contenedor.querySelectorAll('img');
+        if (!imgs.length) {
+            resolve();
+            return;
+        }
+        let pendientes = imgs.length;
+        const revisar = () => {
+            pendientes -= 1;
+            if (pendientes <= 0) resolve();
+        };
+        imgs.forEach((img) => {
+            if (img.complete) revisar();
+            else {
+                img.addEventListener('load', revisar, { once: true });
+                img.addEventListener('error', revisar, { once: true });
+            }
+        });
+        setTimeout(resolve, 4000);
+    });
+}
+
+function ejecutarImpresionFacturaReserva() {
+    if (!facturaReservaDocumentoCache) {
+        alert('No hay factura lista para imprimir.');
+        return;
+    }
+    const iframeAnterior = document.getElementById('iframeImpresionFactura');
+    if (iframeAnterior) iframeAnterior.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'iframeImpresionFactura';
+    iframe.setAttribute('title', 'Impresión de factura');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(iframe);
+
+    const ventana = iframe.contentWindow;
+    const doc = ventana.document;
+    doc.open();
+    doc.write(facturaReservaDocumentoCache);
+    doc.close();
+
+    esperarImagenesEnDocumento(doc, () => {
+        try {
+            ventana.focus();
+            ventana.print();
+        } catch (e) {
+            console.error(e);
+            alert('No se pudo abrir el diálogo de impresión.');
+        }
+        setTimeout(() => iframe.remove(), 1500);
+    });
+}
+
+async function imprimirFacturaReserva(tipo, id) {
+    if (!datosHotelCache) {
+        try {
+            const response = await fetchWithAuth(`${API_URL}/hotel`);
+            if (response.ok) {
+                datosHotelCache = await response.json();
+            }
+        } catch (e) {
+            console.warn('No se pudo cargar datos del hotel para la factura:', e);
+        }
+    }
+    const r =
+        tipo === 'chinchorro'
+            ? reservasChinchorros.find((x) => Number(x.id) === Number(id))
+            : reservas.find((x) => Number(x.id) === Number(id));
+    if (!r) {
+        alert('No se encontró la reserva.');
+        return;
+    }
+
+    const contenedor = document.getElementById('facturaReservaContenido');
+    const modal = document.getElementById('modalFacturaReserva');
+    if (!contenedor || !modal) {
+        alert('No se pudo abrir la vista de factura.');
+        return;
+    }
+
+    facturaReservaDocumentoCache = construirFacturaReservaDocumento(r, tipo);
+    contenedor.innerHTML = construirFacturaReservaInnerHtml(r, tipo);
+    modal.classList.add('active');
+    await esperarImagenesEnContenedor(contenedor);
+    ejecutarImpresionFacturaReserva();
+}
+
 function htmlAccionesReservaHabitacion(reserva) {
     const id = Number(reserva.id);
     const activa = reserva.estado === 'Activa';
@@ -501,6 +794,7 @@ function htmlAccionesReservaHabitacion(reserva) {
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('habitacion', ${id})" title="Imprimir factura">🖨️ Imprimir</button>
                     ${botonesPagoReserva(reserva, 'habitacion', saldoReservaHabitacion)}
                 </div>
                 <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
@@ -524,6 +818,7 @@ function htmlAccionesReservaChinchorro(r) {
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReservaChinchorro(${id})" title="Modificar reserva">✏️ Modificar</button>
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('chinchorro', ${id})" title="Imprimir factura">🖨️ Imprimir</button>
                     ${botonesPagoReserva(r, 'chinchorro', saldoReservaChinchorro)}
                 </div>
                 <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">

@@ -1388,6 +1388,139 @@ body::before {
     transition: all 0.2s;
 }
 
+/* Factura térmica 80mm — vista previa en modal */
+.factura-preview-shell {
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+    background: #e8e8e8;
+    border-radius: 12px;
+    overflow: auto;
+}
+
+.modal-factura-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.modal-factura-header h2 {
+    margin: 0;
+}
+
+.factura-ticket {
+    width: 80mm;
+    min-width: 80mm;
+    max-width: 80mm;
+    padding: 4mm 3mm;
+    background: #fff;
+    color: #000;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+}
+
+.factura-cabecera {
+    text-align: center;
+    padding-bottom: 2px;
+}
+
+.factura-logo {
+    display: block;
+    margin: 0 auto 4px;
+    max-width: 52mm;
+    max-height: 16mm;
+    object-fit: contain;
+}
+
+.factura-logo-placeholder {
+    font-size: 1.6rem;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.factura-cabecera h1 {
+    margin: 0 0 2px;
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.factura-cabecera p {
+    margin: 0;
+    font-size: 10px;
+}
+
+.factura-sep {
+    border-top: 1px dashed #000;
+    margin: 5px 0;
+}
+
+.factura-seccion-titulo {
+    font-weight: bold;
+    text-align: center;
+    margin: 3px 0;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+}
+
+.factura-linea {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 2px 0;
+    word-break: break-word;
+}
+
+.factura-linea > span:first-child {
+    flex: 1;
+    min-width: 0;
+}
+
+.factura-linea > span:last-child {
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.factura-linea--sub {
+    padding-left: 2mm;
+    font-size: 10px;
+}
+
+.factura-linea--bloque {
+    display: block;
+}
+
+.factura-linea--bloque > span {
+    display: block;
+}
+
+.factura-linea--total {
+    font-weight: bold;
+    font-size: 12px;
+    margin-top: 3px;
+}
+
+.factura-linea--saldo {
+    font-weight: bold;
+}
+
+.factura-pie {
+    text-align: center;
+    font-size: 9px;
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px dashed #000;
+}
+
 /* Modales */
 .modal {
     display: none;

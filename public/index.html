@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=29">
+    <link rel="stylesheet" href="styles.css?v=31">
 </head>
 <body>
     <div class="container">
@@ -121,7 +121,7 @@
                     placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                     oninput="actualizarFiltroModulo('reservas', this.value)">
             </div>
-            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En ambas tablas puede registrar <strong>abonos</strong>, <strong>totalizar</strong> el pago y ver columnas Total, Abonado y Saldo.</p>
+            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En ambas tablas puede registrar <strong>abonos</strong>, <strong>totalizar</strong> el pago, <strong>imprimir factura</strong> con el logo del establecimiento y ver columnas Total, Abonado y Saldo.</p>
 
             <h3 class="subsection-title">Reservas de habitaciones</h3>
             <div class="table-container">
@@ -823,6 +823,18 @@
         </div>
     </div>
 
+    <!-- Modal: vista previa e impresión de factura -->
+    <div id="modalFacturaReserva" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="cerrarModal('modalFacturaReserva')">&times;</span>
+            <div class="modal-factura-header">
+                <h2>Vista previa — ticket 80 mm</h2>
+                <button type="button" class="btn-primary" onclick="ejecutarImpresionFacturaReserva()">🖨️ Imprimir</button>
+            </div>
+            <div id="facturaReservaContenido" class="factura-preview-shell"></div>
+        </div>
+    </div>
+
     <!-- Modal: registrar abono -->
     <div id="modalAbonoReserva" class="modal">
         <div class="modal-content modal-content-narrow">
@@ -977,6 +989,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=35"></script>
+    <script src="app.js?v=38"></script>
 </body>
 </html>
