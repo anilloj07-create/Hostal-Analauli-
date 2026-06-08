@@ -71,6 +71,8 @@ function actualizarFiltroModulo(modulo, valor) {
     }
     if (k === 'reservas') {
         renderAcomodacionDelDia();
+        mostrarReservas('tablaReservas');
+        mostrarReservasChinchorros();
         return;
     }
     if (k === 'chinchorros') {
@@ -2207,6 +2209,8 @@ function mostrarSeccion(seccion, boton) {
     }
     if (seccion === 'reservas') {
         renderAcomodacionDelDia();
+        mostrarReservas('tablaReservas');
+        mostrarReservasChinchorros();
     }
     if (seccion === 'gestion-operativa') {
         inicializarGestionOperativa();
@@ -3836,7 +3840,7 @@ function renderAcomodacionDelDia() {
         </div>
         <p class="acomodacion-dia-intro">
             Huéspedes alojados hoy: total de la estadía y saldo pendiente de cada reserva.
-            Use <strong>✅ Check-in</strong> para confirmar la llegada, o <strong>Abonar</strong> / <strong>Totalizar</strong> para registrar el cobro.
+            El registro completo de reservas aparece más abajo en este mismo módulo.
         </p>
         <div class="acomodacion-dia-chips">
             <span class="ocupacion-chip chip-total"><span class="chip-label">Habitaciones</span><span class="chip-value">${lista.length}</span></span>
@@ -4276,6 +4280,7 @@ async function cargarReservasChinchorros() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`);
         reservasChinchorros = await response.json();
+        mostrarReservasChinchorros();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
         renderGestionOperativa();
@@ -4860,6 +4865,7 @@ async function cargarReservas() {
         const response = await fetchWithAuth(`${API_URL}/reservas`);
         reservas = await response.json();
         renderAcomodacionDelDia();
+        mostrarReservas('tablaReservas');
         mostrarHabitaciones();
         actualizarSelectsReserva();
         refrescarPanelesOcupacionDual();
