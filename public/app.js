@@ -346,18 +346,43 @@ function initComboboxesHuespedReserva() {
     }
 }
 
+function reservaPendienteConfirmacionEntrega(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    const est = String(r.estado || '').trim();
+    if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
+    if (est === 'Pendiente de Check-in') return true;
+    const hoy = fechaLocalYMD();
+    const ing = ymdReservaIngreso(r);
+    const sal = ymdReservaSalida(r);
+    if (est === 'Activa' && ing <= hoy && hoy <= sal) return true;
+    return false;
+}
+
+function aplicarFiltroEstadoReservasHabitacion(lista) {
+    const filtro = document.getElementById('filtroEstadoReservas')?.value || '';
+    if (!filtro) return lista;
+    if (filtro === '__pendiente_confirmacion__') {
+        return lista.filter((r) => reservaPendienteConfirmacionEntrega(r));
+    }
+    return lista.filter((r) => String(r.estado || '').trim() === filtro);
+}
+
 function reservasHabitacionesFiltradas() {
     const t = filtrosBusqueda.reservas;
-    if (!t) return reservas;
-    return reservas.filter((r) =>
-        coincideBusqueda(r.id, t) ||
-        coincideBusqueda(r.habitacion_numero, t) ||
-        coincideBusqueda(r.huesped_nombre, t) ||
-        coincideBusqueda(r.huesped_apellido, t) ||
-        coincideBusqueda(r.tipo_habitacion_requerida, t) ||
-        coincideBusqueda(r.metodo_pago, t) ||
-        coincideBusqueda(r.estado, t)
-    );
+    let lista = reservas;
+    if (t) {
+        lista = lista.filter((r) =>
+            coincideBusqueda(r.id, t) ||
+            coincideBusqueda(r.habitacion_numero, t) ||
+            coincideBusqueda(r.huesped_nombre, t) ||
+            coincideBusqueda(r.huesped_apellido, t) ||
+            coincideBusqueda(r.tipo_habitacion_requerida, t) ||
+            coincideBusqueda(r.metodo_pago, t) ||
+            coincideBusqueda(r.estado, t) ||
+            (reservaPendienteConfirmacionEntrega(r) && coincideBusqueda('pendiente confirmacion', t))
+        );
+    }
+    return aplicarFiltroEstadoReservasHabitacion(lista);
 }
 
 function reservasChinchorrosFiltradas() {
@@ -3114,19 +3139,15 @@ function estadoEfectivoReservaHabitacion(r) {
     if (!r) return '';
     const est = String(r.estado || '').trim();
     if (est === 'Confirmada') return est;
-    if (est === 'Activa' && r.checkin_at && String(r.checkin_at).trim()) return 'Confirmada';
+    if (reservaPendienteConfirmacionEntrega(r)) {
+        return est === 'Pendiente de Check-in' ? 'Reservada (pendiente confirmación)' : est;
+    }
     return est;
 }
 
-/** Reserva de habitación que aún puede confirmarse (Confirmar Reserva). */
+/** Solo manual: huésped llegó y falta confirmar con el botón Sí/No. */
 function reservaPuedeCheckDeReserva(r) {
-    if (!r || reservaYaConfirmadaEntrega(r)) return false;
-    const est = String(r.estado || '').trim();
-    if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
-    if (est !== 'Activa' && est !== 'Pendiente de Check-in') return false;
-    const hoy = fechaLocalYMD();
-    const sal = ymdReservaSalida(r);
-    return sal && hoy <= sal;
+    return reservaPendienteConfirmacionEntrega(r);
 }
 
 function htmlBotonConfirmarReserva(r) {
@@ -3150,7 +3171,7 @@ function claseEstadoReservaHabitacion(estado) {
     const e = String(estado || '');
     if (e === 'Activa') return 'estado-disponible';
     if (e === 'Confirmada') return 'estado-disponible';
-    if (e === 'Pendiente de Check-in') return 'estado-reservada';
+    if (e === 'Pendiente de Check-in' || e.includes('pendiente confirmación')) return 'estado-reservada';
     if (e === 'No Presentado (No Show)') return 'estado-fuera-de-servicio';
     if (e === 'Finalizada') return 'estado-en-limpieza';
     return 'estado-ocupada';
@@ -3883,12 +3904,10 @@ function reservasHabitacionAlojadasHoy() {
     const hoy = fechaLocalYMD();
     return reservas
         .filter((r) => {
-            const ing = ymdReservaIngreso(r);
-            const sal = ymdReservaSalida(r);
             if (reservaOcupadaEnFecha(r, hoy)) return true;
-            if (reservaPendienteCheckinEnFecha(r, hoy)) return true;
-            if (reservaPuedeCheckDeReserva(r) && ing <= hoy && hoy <= sal) return true;
-            if (reservaPuedeCheckDeReserva(r) && ing === hoy) return true;
+            if (reservaPendienteConfirmacionEntrega(r) && ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r))) {
+                return true;
+            }
             return false;
         })
         .sort((a, b) =>

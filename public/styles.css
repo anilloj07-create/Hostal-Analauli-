@@ -2248,6 +2248,10 @@ body::before {
     text-align: center;
 }
 
+.reservas-filtros-wrap {
+    margin-bottom: 12px;
+}
+
 .acomodacion-dia-acciones {
     display: flex;
     flex-wrap: wrap;

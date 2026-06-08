@@ -120,15 +120,25 @@
                 <div id="panelAcomodacionDia" class="acomodacion-dia-panel" aria-live="polite"></div>
 
                 <div class="reservas-registro-unificado">
-                    <div class="modulo-busqueda-wrap">
+                    <div class="gestion-toolbar gestion-toolbar--filtros reservas-filtros-wrap">
                         <input
                             type="search"
                             id="buscarReservas"
                             class="input-busqueda-modulo"
                             placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                             oninput="actualizarFiltroModulo('reservas', this.value)">
+                        <select id="filtroEstadoReservas" class="select-filtro-gestion" onchange="renderModuloReservas()" title="Filtrar por estado de la reserva">
+                            <option value="">Todos los estados</option>
+                            <option value="__pendiente_confirmacion__">Reservadas · pendientes de confirmación</option>
+                            <option value="Pendiente de Check-in">Pendiente de Check-in</option>
+                            <option value="Activa">Activa</option>
+                            <option value="Confirmada">Confirmada</option>
+                            <option value="No Presentado (No Show)">No Presentado (No Show)</option>
+                            <option value="Finalizada">Finalizada</option>
+                            <option value="Cancelada">Cancelada</option>
+                        </select>
                     </div>
-                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas. Use <strong>Confirmar Reserva</strong> al entregar la habitación al huésped (validación Sí/No), y <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
+                    <p class="section-intro">La confirmación de llegada es <strong>manual</strong>: use el botón <strong>Confirmar Reserva</strong> y responda <strong>Sí/No</strong> cuando el huésped llegue. Filtre por <strong>Reservadas · pendientes de confirmación</strong> para ver las que esperan su confirmación.</p>
 
                     <h3 class="subsection-title">Registro de reservas</h3>
                     <div class="table-container reservas-tabla-unificada-wrap">
@@ -1167,6 +1177,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=61"></script>
+    <script src="app.js?v=62"></script>
 </body>
 </html>
