@@ -2252,6 +2252,12 @@ body::before {
     margin-bottom: 12px;
 }
 
+.reserva-fila-destacada {
+    background: #ecfdf5 !important;
+    outline: 2px solid #16a34a;
+    transition: background 0.3s ease;
+}
+
 .acomodacion-dia-acciones {
     display: flex;
     flex-wrap: wrap;

@@ -441,7 +441,7 @@ function renderTablaReservasUnificada() {
                     .replace(/^\s*<td[^>]*>\s*/, '')
                     .replace(/\s*<\/td>\s*$/, '');
                 return `
-                <tr>
+                <tr data-reserva-id="${r.id}" data-reserva-tipo="habitacion">
                     <td>${r.id}</td>
                     <td>Habitación</td>
                     <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(r))}</strong></td>
@@ -5353,6 +5353,32 @@ function responderConfirmarCheckin(si) {
     }
 }
 
+function irAListadoReservasTrasConfirmar(idReserva) {
+    const tabBtn = document.getElementById('tabBtnReservas');
+    if (tabBtn) {
+        mostrarSeccion('reservas', tabBtn);
+    }
+    const filtro = document.getElementById('filtroEstadoReservas');
+    if (filtro) {
+        filtro.value = 'Confirmada';
+    }
+    renderModuloReservas();
+    const bloque = document.querySelector('.reservas-registro-unificado');
+    if (bloque) {
+        bloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    window.setTimeout(() => {
+        const fila = document.querySelector(
+            `#tablaReservasUnificada tr[data-reserva-id="${Number(idReserva)}"][data-reserva-tipo="habitacion"]`
+        );
+        if (fila) {
+            fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            fila.classList.add('reserva-fila-destacada');
+            window.setTimeout(() => fila.classList.remove('reserva-fila-destacada'), 2800);
+        }
+    }, 350);
+}
+
 async function checkDeReserva(id) {
     const confirmado = await preguntarCheckDeReserva();
     if (!confirmado) {
@@ -5367,6 +5393,7 @@ async function checkDeReserva(id) {
             await cargarReservas();
             cargarHabitaciones();
             actualizarCalendarioDisponibilidad();
+            irAListadoReservasTrasConfirmar(id);
         } else {
             const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo confirmar la reserva.');
             alert('Error: ' + msg);
