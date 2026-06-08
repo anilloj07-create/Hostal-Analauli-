@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=40">
+    <link rel="stylesheet" href="styles.css?v=41">
 </head>
 <body>
     <div class="container">
@@ -1107,7 +1107,19 @@
         </div>
     </div>
 
+    <!-- Modal confirmar llegada (check-in) -->
+    <div id="modalConfirmarCheckin" class="modal">
+        <div class="modal-content modal-confirm-checkin">
+            <h2>Confirmar llegada</h2>
+            <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Desea confirmar la llegada del huésped?</p>
+            <div class="modal-actions modal-actions-confirm-sino">
+                <button type="button" class="btn-primary btn-confirm-si" onclick="responderConfirmarCheckin(true)">Sí</button>
+                <button type="button" class="btn-secondary btn-confirm-no" onclick="responderConfirmarCheckin(false)">No</button>
+            </div>
+        </div>
+    </div>
+
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=52"></script>
+    <script src="app.js?v=53"></script>
 </body>
 </html>

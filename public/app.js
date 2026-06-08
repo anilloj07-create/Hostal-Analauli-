@@ -4668,8 +4668,32 @@ async function guardarReserva(event) {
     }
 }
 
+let confirmarCheckinResolver = null;
+
+function preguntarConfirmarLlegadaHuesped() {
+    return new Promise((resolve) => {
+        confirmarCheckinResolver = resolve;
+        const modal = document.getElementById('modalConfirmarCheckin');
+        const texto = document.getElementById('textoModalConfirmarCheckin');
+        if (texto) {
+            texto.textContent = '¿Desea confirmar la llegada del huésped?';
+        }
+        if (modal) modal.classList.add('active');
+    });
+}
+
+function responderConfirmarCheckin(si) {
+    const modal = document.getElementById('modalConfirmarCheckin');
+    if (modal) modal.classList.remove('active');
+    if (confirmarCheckinResolver) {
+        confirmarCheckinResolver(!!si);
+        confirmarCheckinResolver = null;
+    }
+}
+
 async function confirmarCheckinReserva(id) {
-    if (!confirm('¿Desea confirmar la llegada del huésped?')) {
+    const confirmado = await preguntarConfirmarLlegadaHuesped();
+    if (!confirmado) {
         return;
     }
     try {
