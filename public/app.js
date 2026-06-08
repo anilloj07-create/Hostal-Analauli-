@@ -70,8 +70,7 @@ function actualizarFiltroModulo(modulo, valor) {
         return;
     }
     if (k === 'reservas') {
-        mostrarReservas('tablaReservas');
-        mostrarReservasChinchorros();
+        renderAcomodacionDelDia();
         return;
     }
     if (k === 'chinchorros') {
@@ -2206,6 +2205,9 @@ function mostrarSeccion(seccion, boton) {
     if (boton) {
         boton.classList.add('active');
     }
+    if (seccion === 'reservas') {
+        renderAcomodacionDelDia();
+    }
     if (seccion === 'gestion-operativa') {
         inicializarGestionOperativa();
         refrescarGestionOperativa();
@@ -3834,7 +3836,7 @@ function renderAcomodacionDelDia() {
         </div>
         <p class="acomodacion-dia-intro">
             Huéspedes alojados hoy: total de la estadía y saldo pendiente de cada reserva.
-            El detalle completo sigue en la pestaña <strong>Reservas</strong>.
+            Use <strong>✅ Check-in</strong> para confirmar la llegada, o <strong>Abonar</strong> / <strong>Totalizar</strong> para registrar el cobro.
         </p>
         <div class="acomodacion-dia-chips">
             <span class="ocupacion-chip chip-total"><span class="chip-label">Habitaciones</span><span class="chip-value">${lista.length}</span></span>
@@ -3877,7 +3879,6 @@ function mostrarHabitaciones() {
     const tbody = document.getElementById('tablaHabitacionesInv');
 
     actualizarResumenOcupacion();
-    renderAcomodacionDelDia();
     renderGestionOperativa();
 
     aplicarLayoutsVistasInventarioDesdeHotel();
@@ -4275,7 +4276,6 @@ async function cargarReservasChinchorros() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`);
         reservasChinchorros = await response.json();
-        mostrarReservasChinchorros();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
         renderGestionOperativa();
@@ -4859,7 +4859,6 @@ async function cargarReservas() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas`);
         reservas = await response.json();
-        mostrarReservas('tablaReservas');
         renderAcomodacionDelDia();
         mostrarHabitaciones();
         actualizarSelectsReserva();
