@@ -1067,16 +1067,14 @@ function htmlAccionesReservaHabitacion(reserva) {
     const confirmada = reserva.estado === 'Confirmada';
     const pendienteCheckin = reservaPendienteCheckin(reserva);
     const puedeGestionar = activa || confirmada || pendienteCheckin;
-    const puedeConfirmarReserva =
-        pendienteCheckin ||
-        (activa && !reservaEstaConCheckin(reserva) && ymdReservaIngreso(reserva) <= fechaLocalYMD());
+    const puedeConfirmarReserva = reservaPuedeCheckDeReserva(reserva);
     return `
         <td class="td-acciones-reserva">
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     ${
                         puedeConfirmarReserva
-                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="checkDeReserva(${id})" title="Validar y confirmar la entrega de la reserva al huésped">Check de Reserva</button>`
+                            ? `<button type="button" class="btn-primary btn-small btn-reserva btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`
                             : ''
                     }
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
@@ -3102,6 +3100,22 @@ function reservaPendienteCheckin(r) {
     return r && String(r.estado) === 'Pendiente de Check-in';
 }
 
+function reservaYaConfirmadaEntrega(r) {
+    if (!r) return false;
+    if (String(r.estado) === 'Confirmada') return true;
+    return !!(r.checkin_at && String(r.checkin_at).trim());
+}
+
+/** Reserva de habitación que aún puede confirmarse (Check / Confirmar Reserva). */
+function reservaPuedeCheckDeReserva(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    const est = String(r.estado || '');
+    if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
+    if (est !== 'Activa' && est !== 'Pendiente de Check-in') return false;
+    const hoy = fechaLocalYMD();
+    return ymdReservaIngreso(r) <= hoy && hoy <= ymdReservaSalida(r);
+}
+
 function reservaEsNoShow(r) {
     return r && String(r.estado) === 'No Presentado (No Show)';
 }
@@ -3844,7 +3858,12 @@ function renderIndicadoresOcupacion() {
 function reservasHabitacionAlojadasHoy() {
     const hoy = fechaLocalYMD();
     return reservas
-        .filter((r) => reservaOcupadaEnFecha(r, hoy) || reservaPendienteCheckinEnFecha(r, hoy))
+        .filter((r) => {
+            if (!ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r))) return false;
+            if (reservaOcupadaEnFecha(r, hoy)) return true;
+            if (reservaPuedeCheckDeReserva(r)) return true;
+            return reservaPendienteCheckinEnFecha(r, hoy);
+        })
         .sort((a, b) =>
             etiquetaHabitacionReserva(a).localeCompare(etiquetaHabitacionReserva(b), 'es', { sensitivity: 'base' })
         );
@@ -3861,13 +3880,10 @@ function textoPersonasReservaHabitacion(r) {
 
 function htmlAccionesAcomodacionDia(r) {
     const id = Number(r.id);
-    const puedeConfirmar =
-        reservaPendienteCheckin(r) ||
-        (r.estado === 'Activa' && !reservaEstaConCheckin(r) && ymdReservaIngreso(r) <= fechaLocalYMD());
-    if (puedeConfirmar) {
+    if (reservaPuedeCheckDeReserva(r)) {
         return `
         <div class="acomodacion-dia-acciones">
-            <button type="button" class="btn-primary btn-small" onclick="checkDeReserva(${id})" title="Validar y confirmar la entrega de la reserva">Check de Reserva</button>
+            <button type="button" class="btn-primary btn-small btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>
         </div>`;
     }
     const saldo = saldoReservaHabitacion(r);
@@ -5277,7 +5293,7 @@ function preguntarCheckDeReserva() {
         const modal = document.getElementById('modalConfirmarCheckin');
         const titulo = modal && modal.querySelector('h2');
         const texto = document.getElementById('textoModalConfirmarCheckin');
-        if (titulo) titulo.textContent = 'Check de Reserva';
+        if (titulo) titulo.textContent = 'Confirmar Reserva';
         if (texto) {
             texto.textContent = '¿Está seguro de que desea confirmar esta reserva?';
         }

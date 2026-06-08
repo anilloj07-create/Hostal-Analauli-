@@ -2236,6 +2236,11 @@ body::before {
     border-top: 2px solid #ffd4b3;
 }
 
+.btn-confirmar-reserva {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
 .acomodacion-dia-acciones {
     display: flex;
     flex-wrap: wrap;
