@@ -401,7 +401,7 @@ function renderTablaReservasUnificada() {
             reservas.length === 0 && reservasChinchorros.length === 0
                 ? 'No hay reservas registradas.'
                 : 'Sin resultados para la búsqueda actual.';
-        tbody.innerHTML = `<tr><td colspan="14" class="gestion-vacio-celda">${vacio}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" class="gestion-vacio-celda">${vacio}</td></tr>`;
         return;
     }
 
@@ -425,6 +425,7 @@ function renderTablaReservasUnificada() {
                     <td>${fechaIngreso}</td>
                     <td>${fechaSalida}</td>
                     <td>${htmlEstadoReservaHabitacion(r)}</td>
+                    <td class="td-confirmar-reserva">${htmlBotonConfirmarReserva(r)}</td>
                     <td>${escapeHtmlCal(formatoMoneda(Number(r.habitacion_precio_diario) || 0))} <span class="muted">/noche</span></td>
                     <td>${textoValorReservaHabitacion(r)}</td>
                     <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
@@ -449,6 +450,7 @@ function renderTablaReservasUnificada() {
                     <td>${fechaIngreso}</td>
                     <td>${fechaSalida}</td>
                     <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(r.estado)}</span></td>
+                    <td class="td-confirmar-reserva"><span class="muted">—</span></td>
                     <td>${escapeHtmlCal(formatoMoneda(Number(r.chinchorro_precio_diario) || 0))} <span class="muted">/día</span></td>
                     <td>${textoValorReservaChinchorro(r)}</td>
                     <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaChinchorro, saldoReservaChinchorro)}</td>
@@ -1067,16 +1069,10 @@ function htmlAccionesReservaHabitacion(reserva) {
     const confirmada = reserva.estado === 'Confirmada';
     const pendienteCheckin = reservaPendienteCheckin(reserva);
     const puedeGestionar = activa || confirmada || pendienteCheckin;
-    const puedeConfirmarReserva = reservaPuedeCheckDeReserva(reserva);
     return `
         <td class="td-acciones-reserva">
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
-                    ${
-                        puedeConfirmarReserva
-                            ? `<button type="button" class="btn-primary btn-small btn-reserva btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`
-                            : ''
-                    }
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('habitacion', ${id})" title="Imprimir factura${dianEnvioAutomaticoActivo() ? ' (envía a DIAN automático)' : ''}">🖨️ Imprimir</button>
                     ${
@@ -1180,12 +1176,21 @@ function tarifaDiariaReservaChinchorro(r) {
     return Number.isFinite(p) && p > 0 ? p : 0;
 }
 
+function normalizarYMD(fecha) {
+    if (fecha == null || fecha === '') return '';
+    const s = String(fecha).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s.includes('T') ? s : `${s}T12:00:00`);
+    if (!Number.isNaN(d.getTime())) return fechaLocalYMD(d);
+    return s.slice(0, 10);
+}
+
 function ymdReservaIngreso(r) {
-    return String(r.fecha_ingreso).slice(0, 10);
+    return normalizarYMD(r && r.fecha_ingreso);
 }
 
 function ymdReservaSalida(r) {
-    return String(r.fecha_salida).slice(0, 10);
+    return normalizarYMD(r && r.fecha_salida);
 }
 
 function ymdEnRangoReserva(ymd, ing, sal) {
@@ -3102,18 +3107,34 @@ function reservaPendienteCheckin(r) {
 
 function reservaYaConfirmadaEntrega(r) {
     if (!r) return false;
-    if (String(r.estado) === 'Confirmada') return true;
-    return !!(r.checkin_at && String(r.checkin_at).trim());
+    return String(r.estado || '').trim() === 'Confirmada';
 }
 
-/** Reserva de habitación que aún puede confirmarse (Check / Confirmar Reserva). */
+function estadoEfectivoReservaHabitacion(r) {
+    if (!r) return '';
+    const est = String(r.estado || '').trim();
+    if (est === 'Confirmada') return est;
+    if (est === 'Activa' && r.checkin_at && String(r.checkin_at).trim()) return 'Confirmada';
+    return est;
+}
+
+/** Reserva de habitación que aún puede confirmarse (Confirmar Reserva). */
 function reservaPuedeCheckDeReserva(r) {
     if (!r || reservaYaConfirmadaEntrega(r)) return false;
-    const est = String(r.estado || '');
+    const est = String(r.estado || '').trim();
     if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
     if (est !== 'Activa' && est !== 'Pendiente de Check-in') return false;
     const hoy = fechaLocalYMD();
-    return ymdReservaIngreso(r) <= hoy && hoy <= ymdReservaSalida(r);
+    const sal = ymdReservaSalida(r);
+    return sal && hoy <= sal;
+}
+
+function htmlBotonConfirmarReserva(r) {
+    if (!reservaPuedeCheckDeReserva(r)) {
+        return '<span class="muted">—</span>';
+    }
+    const id = Number(r.id);
+    return `<button type="button" class="btn-primary btn-small btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`;
 }
 
 function reservaEsNoShow(r) {
@@ -3143,10 +3164,13 @@ function textoTrazabilidadConfirmacionReserva(r) {
 }
 
 function htmlEstadoReservaHabitacion(r) {
-    const clase = claseEstadoReservaHabitacion(r.estado);
-    const traza = textoTrazabilidadConfirmacionReserva(r);
+    const est = estadoEfectivoReservaHabitacion(r);
+    const clase = claseEstadoReservaHabitacion(est);
+    const traza = textoTrazabilidadConfirmacionReserva(r) || (est === 'Confirmada' && r.checkin_at
+        ? `Confirmada el ${new Date(r.checkin_at).toLocaleString('es-ES')}${r.confirmacion_usuario ? ` por ${r.confirmacion_usuario}` : ''}`
+        : '');
     const title = traza ? ` title="${escapeHtmlCal(traza)}"` : '';
-    return `<span class="estado-badge ${clase}"${title}>${escapeHtmlCal(r.estado)}</span>`;
+    return `<span class="estado-badge ${clase}"${title}>${escapeHtmlCal(est)}</span>`;
 }
 
 function claseEstadoReservaChinchorro(estado) {
@@ -3859,10 +3883,13 @@ function reservasHabitacionAlojadasHoy() {
     const hoy = fechaLocalYMD();
     return reservas
         .filter((r) => {
-            if (!ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r))) return false;
+            const ing = ymdReservaIngreso(r);
+            const sal = ymdReservaSalida(r);
             if (reservaOcupadaEnFecha(r, hoy)) return true;
-            if (reservaPuedeCheckDeReserva(r)) return true;
-            return reservaPendienteCheckinEnFecha(r, hoy);
+            if (reservaPendienteCheckinEnFecha(r, hoy)) return true;
+            if (reservaPuedeCheckDeReserva(r) && ing <= hoy && hoy <= sal) return true;
+            if (reservaPuedeCheckDeReserva(r) && ing === hoy) return true;
+            return false;
         })
         .sort((a, b) =>
             etiquetaHabitacionReserva(a).localeCompare(etiquetaHabitacionReserva(b), 'es', { sensitivity: 'base' })
@@ -3881,10 +3908,7 @@ function textoPersonasReservaHabitacion(r) {
 function htmlAccionesAcomodacionDia(r) {
     const id = Number(r.id);
     if (reservaPuedeCheckDeReserva(r)) {
-        return `
-        <div class="acomodacion-dia-acciones">
-            <button type="button" class="btn-primary btn-small btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>
-        </div>`;
+        return `<div class="acomodacion-dia-acciones">${htmlBotonConfirmarReserva(r)}</div>`;
     }
     const saldo = saldoReservaHabitacion(r);
     if (saldo <= 0.005) {

@@ -992,6 +992,11 @@ function procesarEstadosCheckinReservas(callback) {
   const cb = typeof callback === 'function' ? callback : () => {};
   ensureCheckinAtColumn((colErr) => {
     if (colErr) return cb(colErr);
+    db.run(
+      `UPDATE reservas SET estado = ?
+       WHERE estado = ? AND checkin_at IS NOT NULL AND TRIM(checkin_at) != ''`,
+      [ESTADO_RESERVA_CONFIRMADA, ESTADO_RESERVA_ACTIVA],
+      () => {
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
     db.run(
@@ -1025,6 +1030,8 @@ function procesarEstadosCheckinReservas(callback) {
       }
     );
   });
+      }
+    );
   });
 }
 
@@ -1044,8 +1051,22 @@ function confirmarCheckinReserva(id, usuario, callback) {
     if (est === ESTADO_RESERVA_CONFIRMADA) {
       return callback(new Error('La reserva ya está confirmada'));
     }
+    if (r.checkin_at && String(r.checkin_at).trim()) {
+      db.run(
+        `UPDATE reservas SET estado = ?, confirmacion_usuario = COALESCE(confirmacion_usuario, ?) WHERE id = ?`,
+        [ESTADO_RESERVA_CONFIRMADA, usuarioResponsable || null, id],
+        (fixErr) => {
+          if (fixErr) return callback(fixErr);
+          sincronizarEstadoHabitacionConReservas(r.habitacion_id, (syncErr) => {
+            if (syncErr) return callback(syncErr);
+            getReservaById(id, callback);
+          });
+        }
+      );
+      return;
+    }
     if (est !== ESTADO_RESERVA_PENDIENTE_CHECKIN) {
-      if (!(est === ESTADO_RESERVA_ACTIVA && !r.checkin_at && String(r.fecha_ingreso).slice(0, 10) <= fechaHoyYMD())) {
+      if (!(est === ESTADO_RESERVA_ACTIVA && String(r.fecha_ingreso).slice(0, 10) <= fechaHoyYMD())) {
         return callback(new Error('La reserva no está pendiente de confirmación'));
       }
     }
