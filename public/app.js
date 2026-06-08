@@ -3063,7 +3063,7 @@ function mostrarHabitaciones() {
     const vacioGrid =
         '<p style="text-align: center; color: #666; padding: 40px;">No hay habitaciones registradas. Crea una nueva habitación para comenzar.</p>';
     const vacioTabla =
-        '<tr><td colspan="6" style="text-align: center; padding: 24px; color: #666;">No hay habitaciones registradas.</td></tr>';
+        '<tr><td colspan="7" style="text-align: center; padding: 24px; color: #666;">No hay habitaciones registradas.</td></tr>';
 
     if (habitaciones.length === 0) {
         if (grid) grid.innerHTML = vacioGrid;
@@ -3074,7 +3074,7 @@ function mostrarHabitaciones() {
     const listaHabitaciones = habitacionesFiltradas();
     if (listaHabitaciones.length === 0) {
         if (grid) grid.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">Sin resultados para la búsqueda actual.</p>';
-        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
 
@@ -3090,6 +3090,7 @@ function mostrarHabitaciones() {
                 <td><strong>${escapeHtmlCal(etiquetaHabitacion(habitacion))}</strong></td>
                 <td>${escapeHtmlCal(habitacion.tipo || 'N/A')}</td>
                 <td>${escapeHtmlCal(habitacion.piso || '-')}</td>
+                <td>${escapeHtmlCal(String(habitacion.capacidad_personas || 1))} pers.</td>
                 <td>${escapeHtmlCal(String(habitacion.total_camas ?? 0))}</td>
                 <td class="td-estado-inventario">${htmlEstadoHabitacionInventario(habitacion)}</td>
                 <td class="td-acciones-inventario">
@@ -3122,6 +3123,7 @@ function mostrarHabitaciones() {
                 <p><strong>Número:</strong> ${escapeHtmlCal(habitacion.numero)}</p>
                 <p><strong>Nombre:</strong> ${escapeHtmlCal(habitacion.nombre || '-')}</p>
                 <p><strong>Tipo:</strong> ${escapeHtmlCal(habitacion.tipo || 'N/A')}</p>
+                <p><strong>Acomodación:</strong> ${escapeHtmlCal(String(habitacion.capacidad_personas || 1))} persona(s)</p>
                 <p><strong>Piso / nivel:</strong> ${escapeHtmlCal(habitacion.piso || '-')}</p>
                 <p><strong>Tarifa / noche:</strong> ${escapeHtmlCal(precio)}</p>
                 <p><strong>Camas:</strong> ${escapeHtmlCal(String(habitacion.total_camas || 0))}</p>
@@ -3142,6 +3144,22 @@ function mostrarHabitaciones() {
     });
 }
 
+function mostrarBloqueCamasNuevaHabitacion(visible) {
+    const bloque = document.getElementById('bloqueCamasNuevaHabitacion');
+    if (bloque) bloque.hidden = !visible;
+}
+
+function construirCamasNuevaHabitacion() {
+    const cantidad = parseInt(document.getElementById('cantidadCamasHabitacion').value, 10) || 0;
+    if (cantidad < 1) return [];
+    const tipo = document.getElementById('tipoCamaHabitacion').value || 'Individual';
+    const camas = [];
+    for (let i = 1; i <= cantidad; i += 1) {
+        camas.push({ tipo, numero: i });
+    }
+    return camas;
+}
+
 function mostrarModalHabitacion() {
     document.getElementById('formHabitacion').reset();
     document.getElementById('idHabitacionEdicion').value = '';
@@ -3151,7 +3169,11 @@ function mostrarModalHabitacion() {
     const btn = document.getElementById('btnSubmitHabitacion');
     if (btn) btn.textContent = 'Guardar';
     document.getElementById('tipoHabitacion').value = 'Sencilla';
+    document.getElementById('capacidadHabitacion').value = '1';
+    document.getElementById('cantidadCamasHabitacion').value = '1';
+    document.getElementById('tipoCamaHabitacion').value = 'Individual';
     document.getElementById('estadoHabitacion').value = 'Disponible';
+    mostrarBloqueCamasNuevaHabitacion(true);
     aplicarReglasSelectEstadoHabitacionModal(null);
     document.getElementById('modalHabitacion').classList.add('active');
 }
@@ -3162,15 +3184,17 @@ function mostrarModalEditarHabitacion(id) {
     document.getElementById('idHabitacionEdicion').value = String(hab.id);
     document.getElementById('nombreHabitacion').value = etiquetaHabitacion(hab);
     document.getElementById('tipoHabitacion').value = hab.tipo || 'Sencilla';
+    document.getElementById('capacidadHabitacion').value = String(Math.min(5, Math.max(1, Number(hab.capacidad_personas) || 1)));
     document.getElementById('pisoHabitacion').value = hab.piso != null ? String(hab.piso) : '';
     document.getElementById('estadoHabitacion').value = hab.estado || 'Disponible';
+    mostrarBloqueCamasNuevaHabitacion(false);
     aplicarReglasSelectEstadoHabitacionModal(hab);
     document.getElementById('tituloModalHabitacion').textContent = 'Modificar habitación';
     const hint = document.getElementById('mensajeAyudaModalHabitacion');
     if (hint) {
         hint.hidden = false;
         hint.innerHTML =
-            'Puede cambiar nombre, tipo, piso y estado. Elija <strong>En limpieza</strong> o <strong>Fuera de servicio</strong> cuando corresponda. Ocupada y Reservada las asigna el sistema con las reservas. La tarifa por noche se define en <strong>Reservas</strong>.';
+            'Puede cambiar nombre, tipo, acomodación, piso y estado. Las camas se gestionan con el botón <strong>Camas</strong> del listado. Elija <strong>En limpieza</strong> o <strong>Fuera de servicio</strong> cuando corresponda. Ocupada y Reservada las asigna el sistema con las reservas. La tarifa por noche se define en <strong>Reservas</strong>.';
     }
     const btn = document.getElementById('btnSubmitHabitacion');
     if (btn) btn.textContent = 'Guardar cambios';
@@ -3182,6 +3206,7 @@ async function guardarHabitacion(event) {
     const idEd = document.getElementById('idHabitacionEdicion').value.trim();
     const nombre = document.getElementById('nombreHabitacion').value.trim();
     const tipo = document.getElementById('tipoHabitacion').value.trim();
+    const capacidad_personas = Math.min(5, Math.max(1, parseInt(document.getElementById('capacidadHabitacion').value, 10) || 1));
     const piso = document.getElementById('pisoHabitacion').value.trim();
     const estado = document.getElementById('estadoHabitacion').value;
     if (!nombre) {
@@ -3195,13 +3220,14 @@ async function guardarHabitacion(event) {
             response = await fetchWithAuth(`${API_URL}/habitaciones/${parseInt(idEd, 10)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre, tipo, piso, estado })
+                body: JSON.stringify({ nombre, tipo, piso, estado, capacidad_personas })
             });
         } else {
+            const camas = construirCamasNuevaHabitacion();
             response = await fetchWithAuth(`${API_URL}/habitaciones`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre, tipo, piso, estado })
+                body: JSON.stringify({ nombre, tipo, piso, estado, capacidad_personas, camas })
             });
         }
 
@@ -4871,6 +4897,7 @@ function cerrarModal(modalId) {
         if (t) t.textContent = 'Nueva habitación';
         const b = document.getElementById('btnSubmitHabitacion');
         if (b) b.textContent = 'Guardar';
+        mostrarBloqueCamasNuevaHabitacion(true);
     }
     if (modalId === 'modalChinchorro') {
         document.getElementById('idChinchorroEdicion').value = '';

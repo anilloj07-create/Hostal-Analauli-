@@ -173,6 +173,11 @@ function initDatabase() {
             console.error('Migración precio habitaciones:', e.message);
           }
         });
+        db.run('ALTER TABLE habitaciones ADD COLUMN capacidad_personas INTEGER NOT NULL DEFAULT 1', (e) => {
+          if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+            console.error('Migración capacidad habitaciones:', e.message);
+          }
+        });
       }
     });
 
@@ -594,34 +599,52 @@ function getHabitacionById(id, callback) {
   db.get("SELECT * FROM habitaciones WHERE id = ?", [id], callback);
 }
 
-function createHabitacion(codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
+function normalizarCapacidadPersonas(valor) {
+  const n = parseInt(valor, 10);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(5, Math.max(1, n));
+}
+
+function createHabitacion(codigo, numero, nombre, tipo, piso, estado, precio_diario, capacidad_personas, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
   const est = estado || 'Disponible';
+  const capacidad = normalizarCapacidadPersonas(capacidad_personas);
   db.run(
-    "INSERT INTO habitaciones (codigo, numero, nombre, tipo, piso, estado, precio_diario) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [codigo, numero, nombre || null, tipo, piso || null, est, precio],
+    "INSERT INTO habitaciones (codigo, numero, nombre, tipo, piso, estado, precio_diario, capacidad_personas) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [codigo, numero, nombre || null, tipo, piso || null, est, precio, capacidad],
     function(err) {
       if (err) {
         callback(err);
       } else {
-        callback(null, { id: this.lastID, codigo, numero, nombre, tipo, piso, estado: est, precio_diario: precio });
+        callback(null, {
+          id: this.lastID,
+          codigo,
+          numero,
+          nombre,
+          tipo,
+          piso,
+          estado: est,
+          precio_diario: precio,
+          capacidad_personas: capacidad
+        });
       }
     }
   );
 }
 
-function updateHabitacionDatos(id, codigo, numero, nombre, tipo, piso, estado, precio_diario, callback) {
+function updateHabitacionDatos(id, codigo, numero, nombre, tipo, piso, estado, precio_diario, capacidad_personas, callback) {
   const p = precio_diario == null || precio_diario === '' ? 0 : Number(precio_diario);
   const precio = Number.isFinite(p) && p >= 0 ? p : 0;
+  const capacidad = normalizarCapacidadPersonas(capacidad_personas);
   const cod = codigo != null ? String(codigo).trim() : '';
   const codigoSeguro = cod || `HAB-${id}`;
   const numRaw = numero != null ? String(numero).trim() : '';
   const nomRaw = nombre != null ? String(nombre).trim() : '';
   const numeroSeguro = numRaw || codigoSeguro || nomRaw || `HAB-${id}`;
   db.run(
-    'UPDATE habitaciones SET codigo = ?, numero = ?, nombre = ?, tipo = ?, piso = ?, estado = ?, precio_diario = ? WHERE id = ?',
-    [codigoSeguro, numeroSeguro, nombre || null, tipo || 'Sencilla', piso || null, estado || 'Disponible', precio, id],
+    'UPDATE habitaciones SET codigo = ?, numero = ?, nombre = ?, tipo = ?, piso = ?, estado = ?, precio_diario = ?, capacidad_personas = ? WHERE id = ?',
+    [codigoSeguro, numeroSeguro, nombre || null, tipo || 'Sencilla', piso || null, estado || 'Disponible', precio, capacidad, id],
     callback
   );
 }
@@ -665,6 +688,33 @@ function createCama(habitacion_id, tipo, numero, callback) {
       callback(null, { id: this.lastID, habitacion_id, tipo, numero });
     }
   });
+}
+
+function createCamasBatch(habitacion_id, camas, callback) {
+  const lista = Array.isArray(camas) ? camas : [];
+  if (lista.length === 0) {
+    return callback(null, []);
+  }
+  const tiposValidos = ['Individual', 'Doble', 'Queen', 'King'];
+  const creadas = [];
+  let indice = 0;
+  function siguiente(err) {
+    if (err) return callback(err);
+    if (indice >= lista.length) return callback(null, creadas);
+    const item = lista[indice];
+    const orden = indice + 1;
+    indice += 1;
+    const tipoRaw = item && item.tipo != null ? String(item.tipo).trim() : 'Individual';
+    const tipo = tiposValidos.includes(tipoRaw) ? tipoRaw : 'Individual';
+    const numRaw = item && item.numero != null && item.numero !== '' ? parseInt(item.numero, 10) : orden;
+    const numero = Number.isFinite(numRaw) && numRaw > 0 ? numRaw : orden;
+    createCama(habitacion_id, tipo, numero, (e, cama) => {
+      if (e) return callback(e);
+      creadas.push(cama);
+      siguiente(null);
+    });
+  }
+  siguiente(null);
 }
 
 function deleteCama(id, callback) {
@@ -2090,12 +2140,14 @@ module.exports = {
   getAllHabitaciones,
   getHabitacionById,
   createHabitacion,
+  normalizarCapacidadPersonas,
   updateHabitacionDatos,
   updateHabitacionEstado,
   habitacionTieneReservaActivaHoy,
   deleteHabitacion,
   getCamasByHabitacion,
   createCama,
+  createCamasBatch,
   deleteCama,
   getAllHuespedes,
   getHuespedById,

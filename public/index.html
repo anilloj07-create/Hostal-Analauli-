@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=33">
+    <link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
     <div class="container">
@@ -58,6 +58,7 @@
                                 <th>Nombre</th>
                                 <th>Tipo</th>
                                 <th>Piso / nivel</th>
+                                <th>Acomodación</th>
                                 <th>Camas</th>
                                 <th>Estado</th>
                                 <th>Acciones</th>
@@ -570,6 +571,43 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="capacidadHabitacion">Acomodación (personas) *</label>
+                    <select id="capacidadHabitacion" required>
+                        <option value="1">1 persona</option>
+                        <option value="2">2 personas</option>
+                        <option value="3">3 personas</option>
+                        <option value="4">4 personas</option>
+                        <option value="5">5 personas</option>
+                    </select>
+                    <small class="form-hint">Capacidad máxima de huéspedes en la habitación.</small>
+                </div>
+                <div id="bloqueCamasNuevaHabitacion" class="habitacion-camas-nueva">
+                    <h3 class="subsection-title subsection-title--compact">Camas en la habitación</h3>
+                    <div class="form-row form-row--2">
+                        <div class="form-group">
+                            <label for="cantidadCamasHabitacion">Cantidad de camas</label>
+                            <select id="cantidadCamasHabitacion">
+                                <option value="0">Sin camas (agregar después)</option>
+                                <option value="1" selected>1 cama</option>
+                                <option value="2">2 camas</option>
+                                <option value="3">3 camas</option>
+                                <option value="4">4 camas</option>
+                                <option value="5">5 camas</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="tipoCamaHabitacion">Tipo de cama</label>
+                            <select id="tipoCamaHabitacion">
+                                <option value="Individual">Individual</option>
+                                <option value="Doble">Doble</option>
+                                <option value="Queen">Queen</option>
+                                <option value="King">King</option>
+                            </select>
+                        </div>
+                    </div>
+                    <small class="form-hint">Las camas se registran al guardar. Luego puede ajustarlas con el botón <strong>Camas</strong> del listado.</small>
+                </div>
+                <div class="form-group">
                     <label>Piso o nivel</label>
                     <input type="text" id="pisoHabitacion" placeholder="Ej: 1, 2, Penthouse">
                 </div>
@@ -1066,6 +1104,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=43"></script>
+    <script src="app.js?v=44"></script>
 </body>
 </html>

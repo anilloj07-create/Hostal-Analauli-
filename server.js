@@ -841,9 +841,14 @@ app.get('/api/habitaciones', requireAuth, (req, res) => {
 });
 
 app.post('/api/habitaciones', requireAuth, (req, res) => {
-  const { nombre, tipo, piso, estado } = req.body;
+  const { nombre, tipo, piso, estado, capacidad_personas, camas } = req.body;
   const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
   const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  const capacidad = db.normalizarCapacidadPersonas(capacidad_personas);
+  const listaCamas = Array.isArray(camas) ? camas : [];
+  if (listaCamas.length > 10) {
+    return res.status(400).json({ error: 'Máximo 10 camas por habitación al crear' });
+  }
   generarIdentificadoresHabitacion(nombre, (errId, codigo, numero, nombreSeguro) => {
     if (errId) {
       return res.status(400).json({ error: errId.message });
@@ -856,12 +861,20 @@ app.post('/api/habitaciones', requireAuth, (req, res) => {
       piso ? String(piso).trim() : '',
       estadoSeguro,
       0,
+      capacidad,
       (err, habitacion) => {
         if (err) {
-          res.status(500).json({ error: err.message });
-        } else {
-          res.status(201).json(habitacion);
+          return res.status(500).json({ error: err.message });
         }
+        if (listaCamas.length === 0) {
+          return res.status(201).json(habitacion);
+        }
+        db.createCamasBatch(habitacion.id, listaCamas, (errCamas) => {
+          if (errCamas) {
+            return res.status(500).json({ error: errCamas.message });
+          }
+          res.status(201).json({ ...habitacion, total_camas: listaCamas.length });
+        });
       }
     );
   });
@@ -869,7 +882,7 @@ app.post('/api/habitaciones', requireAuth, (req, res) => {
 
 app.put('/api/habitaciones/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { nombre, tipo, piso, estado } = req.body;
+  const { nombre, tipo, piso, estado, capacidad_personas } = req.body;
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
@@ -879,6 +892,7 @@ app.put('/api/habitaciones/:id', requireAuth, (req, res) => {
   }
   const estadosValidos = ['Disponible', 'Ocupada', 'Reservada', 'En limpieza', 'Fuera de servicio'];
   const estadoSeguro = estadosValidos.includes(String(estado)) ? String(estado) : 'Disponible';
+  const capacidad = db.normalizarCapacidadPersonas(capacidad_personas);
   db.habitacionTieneReservaActivaHoy(id, (errRes, conReserva) => {
     if (errRes) {
       return res.status(500).json({ error: errRes.message });
@@ -903,6 +917,7 @@ app.put('/api/habitaciones/:id', requireAuth, (req, res) => {
         piso ? String(piso).trim() : '',
         estadoFinal,
         precio,
+        capacidad,
         (err) => {
           if (err) {
             res.status(500).json({ error: err.message });
