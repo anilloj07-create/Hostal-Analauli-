@@ -105,7 +105,19 @@ function initDatabase() {
       'ALTER TABLE hotel ADD COLUMN color_acento TEXT',
       'ALTER TABLE hotel ADD COLUMN color_titulo TEXT',
       'ALTER TABLE hotel ADD COLUMN fondo_imagen_url TEXT',
-      'ALTER TABLE hotel ADD COLUMN logo_url TEXT'
+      'ALTER TABLE hotel ADD COLUMN logo_url TEXT',
+      'ALTER TABLE hotel ADD COLUMN nit TEXT',
+      'ALTER TABLE hotel ADD COLUMN nit_dv TEXT',
+      'ALTER TABLE hotel ADD COLUMN razon_social TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_resolucion TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_clave_tecnica TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_resolucion_fecha TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_prefijo TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_rango_desde INTEGER',
+      'ALTER TABLE hotel ADD COLUMN dian_rango_hasta INTEGER',
+      'ALTER TABLE hotel ADD COLUMN dian_vigencia_desde TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_vigencia_hasta TEXT',
+      'ALTER TABLE hotel ADD COLUMN dian_envio_automatico INTEGER DEFAULT 0'
     ];
     hotelThemeMigrations.forEach((sql) => {
       db.run(sql, (e) => {
@@ -415,6 +427,21 @@ function initDatabase() {
         });
       });
     });
+
+    db.run(
+      `CREATE TABLE IF NOT EXISTS comprobantes_factura (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        consecutivo INTEGER NOT NULL UNIQUE,
+        tipo TEXT NOT NULL CHECK(tipo IN ('habitacion', 'chinchorro')),
+        reserva_id INTEGER NOT NULL,
+        fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (errComp) => {
+        if (errComp) {
+          console.error('Error al crear tabla comprobantes_factura:', errComp.message);
+        }
+      }
+    );
 
     migrarContrasenasSinMayusculasTodosRoles((migErr) => {
       if (migErr) {
@@ -1748,6 +1775,308 @@ function marcarMigracionClaves(callback) {
   );
 }
 
+function formatoConsecutivoFactura(consecutivo) {
+  const n = Math.max(1, parseInt(consecutivo, 10) || 1);
+  return String(n).padStart(6, '0');
+}
+
+const comprobantesFacturaColumnas = [
+  'ALTER TABLE comprobantes_factura ADD COLUMN dian_estado TEXT DEFAULT \'pendiente\'',
+  'ALTER TABLE comprobantes_factura ADD COLUMN cufe TEXT',
+  'ALTER TABLE comprobantes_factura ADD COLUMN qr_url TEXT',
+  'ALTER TABLE comprobantes_factura ADD COLUMN qr_imagen TEXT',
+  'ALTER TABLE comprobantes_factura ADD COLUMN dian_respuesta TEXT',
+  'ALTER TABLE comprobantes_factura ADD COLUMN dian_fecha_envio DATETIME',
+  'ALTER TABLE comprobantes_factura ADD COLUMN valor_total REAL'
+];
+
+function migrarColumnasComprobantesFactura(callback) {
+  let i = 0;
+  const next = () => {
+    if (i >= comprobantesFacturaColumnas.length) {
+      return callback();
+    }
+    const sql = comprobantesFacturaColumnas[i++];
+    db.run(sql, (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.warn('Migración comprobantes_factura:', e.message);
+      }
+      next();
+    });
+  };
+  next();
+}
+
+function ensureComprobantesFacturaTable(callback) {
+  db.run(
+    `CREATE TABLE IF NOT EXISTS comprobantes_factura (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      consecutivo INTEGER NOT NULL UNIQUE,
+      tipo TEXT NOT NULL CHECK(tipo IN ('habitacion', 'chinchorro')),
+      reserva_id INTEGER NOT NULL,
+      fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP,
+      dian_estado TEXT DEFAULT 'pendiente',
+      cufe TEXT,
+      qr_url TEXT,
+      qr_imagen TEXT,
+      dian_respuesta TEXT,
+      dian_fecha_envio DATETIME,
+      valor_total REAL
+    )`,
+    (err) => {
+      if (err) {
+        return callback(err);
+      }
+      migrarColumnasComprobantesFactura(callback);
+    }
+  );
+}
+
+/** Asigna el siguiente consecutivo global al generar una factura. */
+function registrarComprobanteFactura(tipo, reservaId, callback) {
+  const tipoNorm = tipo === 'chinchorro' ? 'chinchorro' : 'habitacion';
+  const rid = parseInt(reservaId, 10);
+  if (!rid) {
+    return setImmediate(() => callback(new Error('Reserva no válida')));
+  }
+
+  ensureComprobantesFacturaTable((tableErr) => {
+    if (tableErr) {
+      return callback(tableErr);
+    }
+    db.get(
+      'SELECT COALESCE(MAX(consecutivo), 0) + 1 AS siguiente FROM comprobantes_factura',
+      (err, row) => {
+        if (err) {
+          return callback(err);
+        }
+        const consecutivo = row.siguiente;
+        db.run(
+          'INSERT INTO comprobantes_factura (consecutivo, tipo, reserva_id) VALUES (?, ?, ?)',
+          [consecutivo, tipoNorm, rid],
+          function (insErr) {
+            if (insErr) {
+              return callback(insErr);
+            }
+            const insertId = this.lastID;
+            db.get(
+              'SELECT id, consecutivo, tipo, reserva_id, fecha_emision FROM comprobantes_factura WHERE id = ?',
+              [insertId],
+              (selErr, comp) => {
+                if (selErr) {
+                  return callback(selErr);
+                }
+                callback(null, {
+                  ...comp,
+                  numero: formatoConsecutivoFactura(comp.consecutivo)
+                });
+              }
+            );
+          }
+        );
+      }
+    );
+  });
+}
+
+function getComprobanteById(id, callback) {
+  db.get(
+    `SELECT id, consecutivo, tipo, reserva_id, fecha_emision,
+            dian_estado, cufe, qr_url, qr_imagen, dian_respuesta, dian_fecha_envio, valor_total
+     FROM comprobantes_factura WHERE id = ?`,
+    [id],
+    (err, row) => {
+      if (err) {
+        return callback(err);
+      }
+      if (!row) {
+        return callback(null, null);
+      }
+      callback(null, {
+        ...row,
+        numero: formatoConsecutivoFactura(row.consecutivo)
+      });
+    }
+  );
+}
+
+function getUltimoComprobanteDianReserva(tipo, reservaId, callback) {
+  const tipoNorm = tipo === 'chinchorro' ? 'chinchorro' : 'habitacion';
+  db.get(
+    `SELECT id, consecutivo, tipo, reserva_id, fecha_emision,
+            dian_estado, cufe, qr_url, qr_imagen, dian_respuesta, dian_fecha_envio, valor_total
+     FROM comprobantes_factura
+     WHERE tipo = ? AND reserva_id = ? AND dian_estado = 'aceptado'
+     ORDER BY id DESC LIMIT 1`,
+    [tipoNorm, reservaId],
+    (err, row) => {
+      if (err) {
+        return callback(err);
+      }
+      if (!row) {
+        return callback(null, null);
+      }
+      callback(null, { ...row, numero: formatoConsecutivoFactura(row.consecutivo) });
+    }
+  );
+}
+
+function updateComprobanteDian(id, datos, callback) {
+  db.run(
+    `UPDATE comprobantes_factura SET
+      dian_estado = ?,
+      cufe = ?,
+      qr_url = ?,
+      qr_imagen = ?,
+      dian_respuesta = ?,
+      dian_fecha_envio = CURRENT_TIMESTAMP,
+      valor_total = ?
+     WHERE id = ?`,
+    [
+      datos.dian_estado || 'aceptado',
+      datos.cufe || null,
+      datos.qr_url || null,
+      datos.qr_imagen || null,
+      datos.dian_respuesta || null,
+      datos.valor_total != null ? datos.valor_total : null,
+      id
+    ],
+    (err) => {
+      if (err) {
+        return callback(err);
+      }
+      getComprobanteById(id, callback);
+    }
+  );
+}
+
+function getReservaFacturaContext(tipo, reservaId, callback) {
+  const rid = parseInt(reservaId, 10);
+  if (!rid) {
+    return setImmediate(() => callback(new Error('Reserva no válida')));
+  }
+  if (tipo === 'chinchorro') {
+    db.get(
+      `
+      SELECT r.*,
+             ch.codigo as chinchorro_codigo,
+             ch.nombre as chinchorro_nombre,
+             COALESCE(NULLIF(r.tarifa_dia, 0), ch.precio_diario, 0) as chinchorro_precio_diario,
+             hu.nombre as huesped_nombre,
+             hu.apellido as huesped_apellido,
+             hu.documento as huesped_documento,
+             hu.tipo_documento as huesped_tipo_documento
+      FROM reservas_chinchorros r
+      JOIN chinchorros ch ON r.chinchorro_id = ch.id
+      JOIN huespedes hu ON r.huesped_id = hu.id
+      WHERE r.id = ?
+    `,
+      [rid],
+      callback
+    );
+    return;
+  }
+  db.get(
+    `
+    SELECT r.*,
+           h.numero as habitacion_numero,
+           h.nombre as habitacion_nombre,
+           COALESCE(NULLIF(r.tarifa_noche, 0), h.precio_diario, 0) as habitacion_precio_diario,
+           hu.nombre as huesped_nombre,
+           hu.apellido as huesped_apellido,
+           hu.documento as huesped_documento,
+           hu.tipo_documento as huesped_tipo_documento
+    FROM reservas r
+    JOIN habitaciones h ON r.habitacion_id = h.id
+    JOIN huespedes hu ON r.huesped_id = hu.id
+    WHERE r.id = ?
+  `,
+    [rid],
+    callback
+  );
+}
+
+function hotelTieneResolucionDianCompleta(hotel) {
+  const h = hotel || {};
+  const nit = String(h.nit || '').trim();
+  const resolucion = String(h.dian_resolucion || '').trim();
+  const clave = String(h.dian_clave_tecnica || '').trim();
+  const prefijo = String(h.dian_prefijo || '').trim();
+  const desde = parseInt(h.dian_rango_desde, 10);
+  const hasta = parseInt(h.dian_rango_hasta, 10);
+  return !!(nit && resolucion && clave && prefijo && desde >= 1 && hasta >= desde);
+}
+
+function validarConsecutivoEnRangoDian(hotel, consecutivo) {
+  const h = hotel || {};
+  const n = parseInt(consecutivo, 10);
+  const desde = parseInt(h.dian_rango_desde, 10);
+  const hasta = parseInt(h.dian_rango_hasta, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return { ok: false, error: 'Consecutivo de factura no válido.' };
+  }
+  if (!Number.isFinite(desde) || !Number.isFinite(hasta)) {
+    return { ok: false, error: 'Configure el rango autorizado en la resolución DIAN (desde / hasta).' };
+  }
+  if (n < desde || n > hasta) {
+    return {
+      ok: false,
+      error: `El consecutivo ${n} está fuera del rango autorizado (${desde} - ${hasta}). Actualice la resolución en Configuración.`
+    };
+  }
+  return { ok: true };
+}
+
+function formatoNumeroFacturaDian(hotel, consecutivo) {
+  const prefijo = String((hotel && hotel.dian_prefijo) || '').trim().toUpperCase();
+  const n = Math.max(1, parseInt(consecutivo, 10) || 1);
+  const cuerpo = String(n).padStart(8, '0');
+  return prefijo ? `${prefijo}${cuerpo}` : cuerpo;
+}
+
+function updateHotelFacturacion(datos, callback) {
+  const d = datos || {};
+  ensureHotelRow((err) => {
+    if (err) {
+      return callback(err);
+    }
+    const rangoDesde = d.dian_rango_desde != null && d.dian_rango_desde !== '' ? parseInt(d.dian_rango_desde, 10) : null;
+    const rangoHasta = d.dian_rango_hasta != null && d.dian_rango_hasta !== '' ? parseInt(d.dian_rango_hasta, 10) : null;
+    db.run(
+      `UPDATE hotel SET
+        nit = ?,
+        nit_dv = ?,
+        razon_social = ?,
+        dian_resolucion = ?,
+        dian_clave_tecnica = ?,
+        dian_resolucion_fecha = ?,
+        dian_prefijo = ?,
+        dian_rango_desde = ?,
+        dian_rango_hasta = ?,
+        dian_vigencia_desde = ?,
+        dian_vigencia_hasta = ?,
+        dian_envio_automatico = ?,
+        fecha_actualizacion = CURRENT_TIMESTAMP
+       WHERE id = (SELECT id FROM hotel ORDER BY id DESC LIMIT 1)`,
+      [
+        d.nit || '',
+        d.nit_dv || '',
+        d.razon_social || '',
+        d.dian_resolucion || '',
+        d.dian_clave_tecnica || '',
+        d.dian_resolucion_fecha || '',
+        String(d.dian_prefijo || '').trim().toUpperCase(),
+        Number.isFinite(rangoDesde) ? rangoDesde : null,
+        Number.isFinite(rangoHasta) ? rangoHasta : null,
+        d.dian_vigencia_desde || '',
+        d.dian_vigencia_hasta || '',
+        d.dian_envio_automatico ? 1 : 0
+      ],
+      callback
+    );
+  });
+}
+
 module.exports = {
   db,
   getDatabaseInfo,
@@ -1811,5 +2140,17 @@ module.exports = {
   totalizarReservaChinchorro,
   updateReservaChinchorroDatos,
   updateReservaChinchorroEstado,
-  deleteReservaChinchorro
+  deleteReservaChinchorro,
+  registrarComprobanteFactura,
+  formatoConsecutivoFactura,
+  getComprobanteById,
+  getUltimoComprobanteDianReserva,
+  updateComprobanteDian,
+  getReservaFacturaContext,
+  updateHotelFacturacion,
+  hotelTieneResolucionDianCompleta,
+  validarConsecutivoEnRangoDian,
+  formatoNumeroFacturaDian,
+  calcularTotalReservaHabitacionRow,
+  calcularTotalReservaChinchorroRow
 };

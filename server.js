@@ -7,6 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const db = require('./database');
+const dian = require('./dian');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1091,6 +1093,240 @@ app.delete('/api/huespedes/:id', requireAuth, (req, res) => {
     } else {
       res.json({ message: 'Huésped eliminado' });
     }
+  });
+});
+
+// ========== COMPROBANTES / FACTURAS ==========
+function totalFacturaReserva(row, tipo) {
+  return tipo === 'chinchorro'
+    ? db.calcularTotalReservaChinchorroRow(row)
+    : db.calcularTotalReservaHabitacionRow(row);
+}
+
+app.get('/api/comprobantes/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) {
+    return res.status(400).json({ error: 'Comprobante no válido' });
+  }
+  db.getComprobanteById(id, (err, comprobante) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (!comprobante) {
+      return res.status(404).json({ error: 'Comprobante no encontrado' });
+    }
+    res.json(comprobante);
+  });
+});
+
+app.get('/api/comprobantes/:id/qr.png', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) {
+    return res.status(400).send('Comprobante no válido');
+  }
+  db.getComprobanteById(id, (err, comprobante) => {
+    if (err || !comprobante) {
+      return res.status(404).send('No encontrado');
+    }
+    if (comprobante.qr_imagen && comprobante.qr_imagen.startsWith('data:image')) {
+      const base64 = comprobante.qr_imagen.replace(/^data:image\/\w+;base64,/, '');
+      res.setHeader('Content-Type', 'image/png');
+      return res.send(Buffer.from(base64, 'base64'));
+    }
+    const url = comprobante.qr_url || (comprobante.cufe ? dian.urlValidacionDian(comprobante.cufe) : null);
+    if (!url) {
+      return res.status(404).send('Sin QR');
+    }
+    QRCode.toBuffer(url, { width: 180, margin: 1 })
+      .then((buf) => {
+        res.setHeader('Content-Type', 'image/png');
+        res.send(buf);
+      })
+      .catch(() => res.status(500).send('Error al generar QR'));
+  });
+});
+
+app.post('/api/comprobantes/reserva/dian', requireAuth, (req, res) => {
+  const { tipo, reserva_id } = req.body || {};
+  const tipoNorm = String(tipo || '').trim().toLowerCase();
+  if (!['habitacion', 'chinchorro'].includes(tipoNorm)) {
+    return res.status(400).json({ error: 'Tipo de comprobante no válido' });
+  }
+  const reservaId = parseInt(reserva_id, 10);
+  if (!reservaId) {
+    return res.status(400).json({ error: 'Reserva no válida' });
+  }
+
+  db.getReservaFacturaContext(tipoNorm, reservaId, (errCtx, reserva) => {
+    if (errCtx) {
+      return res.status(500).json({ error: errCtx.message });
+    }
+    if (!reserva) {
+      return res.status(404).json({ error: 'Reserva no encontrada' });
+    }
+
+    db.getHotel((errHotel, hotel) => {
+      if (errHotel) {
+        return res.status(500).json({ error: errHotel.message });
+      }
+      const h = hotel || {};
+      if (!db.hotelTieneResolucionDianCompleta(h)) {
+        return res.status(400).json({
+          error:
+            'Configure en Configuración → Facturación electrónica DIAN: NIT, número de resolución, prefijo, rango (desde/hasta) y clave técnica.'
+        });
+      }
+
+      const nitEmisor = String(h.nit || '').trim();
+
+      db.registrarComprobanteFactura(tipoNorm, reservaId, async (errComp, comprobante) => {
+        if (errComp) {
+          return res.status(500).json({ error: errComp.message || 'No se pudo crear el comprobante' });
+        }
+
+        const rangoVal = db.validarConsecutivoEnRangoDian(h, comprobante.consecutivo);
+        if (!rangoVal.ok) {
+          return res.status(400).json({ error: rangoVal.error });
+        }
+
+        const valorTotal = totalFacturaReserva(reserva, tipoNorm);
+        const nombreAdq = `${reserva.huesped_nombre || ''} ${reserva.huesped_apellido || ''}`.trim();
+        const numeroDian = db.formatoNumeroFacturaDian(h, comprobante.consecutivo);
+        const datosDian = {
+          numeroFactura: comprobante.consecutivo,
+          numeroDian,
+          consecutivo: comprobante.consecutivo,
+          tipo: tipoNorm,
+          reservaId,
+          fechaEmision: comprobante.fecha_emision,
+          valorTotal,
+          valorBase: valorTotal,
+          valorIva: 0,
+          nitEmisor,
+          razonSocial: h.razon_social || h.nombre || 'Establecimiento',
+          documentoAdquiriente: reserva.huesped_documento || '222222222222',
+          nombreAdquiriente: nombreAdq || 'Consumidor final',
+          claveTecnica: h.dian_clave_tecnica,
+          resolucion: {
+            numero: h.dian_resolucion,
+            fecha: h.dian_resolucion_fecha,
+            prefijo: h.dian_prefijo,
+            rango_desde: h.dian_rango_desde,
+            rango_hasta: h.dian_rango_hasta,
+            vigencia_desde: h.dian_vigencia_desde,
+            vigencia_hasta: h.dian_vigencia_hasta
+          }
+        };
+
+        try {
+          const respDian = await dian.enviarFacturaDIAN(datosDian);
+          let qrImagen = null;
+          try {
+            qrImagen = await QRCode.toDataURL(respDian.qr_url, { width: 180, margin: 1 });
+          } catch (qrErr) {
+            console.warn('QR factura:', qrErr.message);
+          }
+
+          db.updateComprobanteDian(
+            comprobante.id,
+            {
+              dian_estado: respDian.estado === 'rechazado' ? 'rechazado' : 'aceptado',
+              cufe: respDian.cufe,
+              qr_url: respDian.qr_url,
+              qr_imagen: qrImagen,
+              dian_respuesta: respDian.respuesta,
+              valor_total: valorTotal
+            },
+            (errUpd, actualizado) => {
+              if (errUpd) {
+                return res.status(500).json({ error: errUpd.message });
+              }
+              res.json({
+                comprobante: {
+                  ...actualizado,
+                  numero_dian: numeroDian
+                },
+                resolucion: datosDian.resolucion,
+                dian: {
+                  estado: respDian.estado,
+                  modo: respDian.modo,
+                  mensaje: respDian.respuesta
+                }
+              });
+            }
+          );
+        } catch (dianErr) {
+          db.updateComprobanteDian(
+            comprobante.id,
+            {
+              dian_estado: 'rechazado',
+              dian_respuesta: dianErr.message || 'Error al enviar a DIAN',
+              valor_total: valorTotal
+            },
+            () => {
+              res.status(502).json({
+                error: dianErr.message || 'DIAN rechazó o no respondió el documento',
+                comprobante_id: comprobante.id
+              });
+            }
+          );
+        }
+      });
+    });
+  });
+});
+
+app.put('/api/hotel/facturacion', requireAuth, requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const desde = parseInt(body.dian_rango_desde, 10);
+  const hasta = parseInt(body.dian_rango_hasta, 10);
+  if (!String(body.nit || '').trim()) {
+    return res.status(400).json({ error: 'El NIT es obligatorio.' });
+  }
+  if (!String(body.dian_resolucion || '').trim()) {
+    return res.status(400).json({ error: 'El número de resolución DIAN es obligatorio.' });
+  }
+  if (!String(body.dian_prefijo || '').trim()) {
+    return res.status(400).json({ error: 'El prefijo de facturación es obligatorio.' });
+  }
+  if (!String(body.dian_clave_tecnica || '').trim()) {
+    return res.status(400).json({ error: 'La clave técnica DIAN es obligatoria.' });
+  }
+  if (!Number.isFinite(desde) || !Number.isFinite(hasta) || desde < 1 || hasta < desde) {
+    return res.status(400).json({ error: 'El rango autorizado (desde / hasta) no es válido.' });
+  }
+  db.updateHotelFacturacion(body, (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({
+      message: 'Resolución y datos de facturación DIAN guardados',
+      resolucion_completa: true
+    });
+  });
+});
+
+app.post('/api/comprobantes/reserva', requireAuth, (req, res) => {
+  const { tipo, reserva_id } = req.body || {};
+  const tipoNorm = String(tipo || '').trim().toLowerCase();
+  if (!['habitacion', 'chinchorro'].includes(tipoNorm)) {
+    return res.status(400).json({ error: 'Tipo de comprobante no válido' });
+  }
+  const reservaId = parseInt(reserva_id, 10);
+  if (!reservaId) {
+    return res.status(400).json({ error: 'Reserva no válida' });
+  }
+  db.registrarComprobanteFactura(tipoNorm, reservaId, (err, comprobante) => {
+    if (err) {
+      return res.status(500).json({ error: err.message || 'No se pudo generar el consecutivo' });
+    }
+    res.json({
+      consecutivo: comprobante.consecutivo,
+      numero: comprobante.numero,
+      tipo: comprobante.tipo,
+      reserva_id: comprobante.reserva_id,
+      fecha_emision: comprobante.fecha_emision
+    });
   });
 });
 

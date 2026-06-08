@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=31">
+    <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
     <div class="container">
@@ -121,7 +121,7 @@
                     placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                     oninput="actualizarFiltroModulo('reservas', this.value)">
             </div>
-            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En ambas tablas puede registrar <strong>abonos</strong>, <strong>totalizar</strong> el pago, <strong>imprimir factura</strong> con el logo del establecimiento y ver columnas Total, Abonado y Saldo.</p>
+            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En ambas tablas puede registrar <strong>abonos</strong>, <strong>totalizar</strong> el pago, <strong>imprimir factura</strong>, <strong>enviar a la DIAN</strong> (CUFE y QR) y ver columnas Total, Abonado y Saldo.</p>
 
             <h3 class="subsection-title">Reservas de habitaciones</h3>
             <div class="table-container">
@@ -352,6 +352,83 @@
                 </div>
                 <div class="tema-acciones" style="margin-top:12px">
                     <button type="button" class="btn-primary" onclick="guardarVistasInventario()">Guardar vistas</button>
+                </div>
+            </div>
+
+            <div id="bloqueFacturacionDian" class="solo-admin oculto-sin-permiso">
+                <h3 class="subsection-title">Facturación electrónica DIAN</h3>
+                <p class="section-intro" style="margin-top:-6px">
+                    Configure el <strong>NIT</strong> y la <strong>resolución de facturación</strong> autorizada por la DIAN.
+                    Elija si el envío es <strong>automático al imprimir</strong> o <strong>manual con el botón 📤 DIAN</strong> en reservas.
+                </p>
+                <p id="estadoResolucionDian" class="modal-hint"></p>
+
+                <h4 class="subsection-title subsection-title--small">Datos del emisor</h4>
+                <div class="vistas-inv-grid">
+                    <div class="form-group">
+                        <label for="hotelNit">NIT del establecimiento *</label>
+                        <input type="text" id="hotelNit" placeholder="Ej. 900123456" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelNitDv">Dígito de verificación</label>
+                        <input type="text" id="hotelNitDv" maxlength="1" placeholder="Ej. 7" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelRazonSocial">Razón social</label>
+                        <input type="text" id="hotelRazonSocial" placeholder="Nombre legal del establecimiento">
+                    </div>
+                </div>
+
+                <h4 class="subsection-title subsection-title--small">Resolución DIAN *</h4>
+                <div class="vistas-inv-grid">
+                    <div class="form-group">
+                        <label for="hotelDianResolucion">Número de resolución *</label>
+                        <input type="text" id="hotelDianResolucion" placeholder="Ej. 18760000001" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianResolucionFecha">Fecha de resolución</label>
+                        <input type="date" id="hotelDianResolucionFecha">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianPrefijo">Prefijo de factura *</label>
+                        <input type="text" id="hotelDianPrefijo" placeholder="Ej. SETP, FE, HAB" maxlength="10" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianRangoDesde">Rango autorizado desde *</label>
+                        <input type="number" id="hotelDianRangoDesde" min="1" step="1" placeholder="Ej. 1">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianRangoHasta">Rango autorizado hasta *</label>
+                        <input type="number" id="hotelDianRangoHasta" min="1" step="1" placeholder="Ej. 5000">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianVigenciaDesde">Vigencia desde</label>
+                        <input type="date" id="hotelDianVigenciaDesde">
+                    </div>
+                    <div class="form-group">
+                        <label for="hotelDianVigenciaHasta">Vigencia hasta</label>
+                        <input type="date" id="hotelDianVigenciaHasta">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="hotelDianClaveTecnica">Clave técnica *</label>
+                    <input type="text" id="hotelDianClaveTecnica" placeholder="Clave técnica asignada en la resolución DIAN">
+                </div>
+
+                <h4 class="subsection-title subsection-title--small">Modo de envío a la DIAN</h4>
+                <div class="form-group form-group-checkbox">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="hotelDianEnvioAutomatico">
+                        Envío automático a la DIAN al imprimir factura
+                    </label>
+                    <small class="form-hint">
+                        Si está activo, al pulsar <strong>Imprimir</strong> en reservas se envía a la DIAN y la factura incluye CUFE y QR.
+                        Si está desactivado, use el botón <strong>📤 DIAN</strong> en cada reserva.
+                    </small>
+                </div>
+
+                <div class="tema-acciones" style="margin-top:12px">
+                    <button type="button" class="btn-primary" onclick="guardarFacturacionDian()">Guardar resolución DIAN</button>
                 </div>
             </div>
 
@@ -828,7 +905,7 @@
         <div class="modal-content modal-large">
             <span class="close" onclick="cerrarModal('modalFacturaReserva')">&times;</span>
             <div class="modal-factura-header">
-                <h2>Vista previa — ticket 80 mm</h2>
+                <h2 id="tituloModalFactura">Vista previa — ticket 80 mm</h2>
                 <button type="button" class="btn-primary" onclick="ejecutarImpresionFacturaReserva()">🖨️ Imprimir</button>
             </div>
             <div id="facturaReservaContenido" class="factura-preview-shell"></div>
@@ -989,6 +1066,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=38"></script>
+    <script src="app.js?v=43"></script>
 </body>
 </html>

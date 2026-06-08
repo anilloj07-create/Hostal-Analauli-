@@ -297,6 +297,37 @@ body::before {
     border-bottom: 2px solid #FFE5D9;
 }
 
+.subsection-title--small {
+    font-size: 1rem;
+    margin: 18px 0 10px;
+    border-bottom: 1px dashed #FFE5D9;
+}
+
+.texto-error {
+    color: #c62828;
+}
+
+.form-group-checkbox {
+    margin-top: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--color-heading);
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--color-primary);
+}
+
 .section-header-wrap {
     flex-wrap: wrap;
     gap: 12px;
@@ -1519,6 +1550,40 @@ body::before {
     margin-top: 6px;
     padding-top: 4px;
     border-top: 1px dashed #000;
+}
+
+.factura-dian {
+    text-align: center;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed #000;
+}
+
+.factura-dian-titulo {
+    font-weight: bold;
+    font-size: 10px;
+    margin-bottom: 4px;
+}
+
+.factura-qr {
+    display: block;
+    margin: 4px auto;
+    width: 42mm;
+    max-width: 100%;
+    height: auto;
+}
+
+.factura-cufe {
+    font-size: 8px;
+    word-break: break-all;
+    line-height: 1.25;
+    margin-top: 4px;
+    text-align: left;
+}
+
+.factura-dian-estado {
+    font-size: 9px;
+    margin-top: 4px;
 }
 
 /* Modales */

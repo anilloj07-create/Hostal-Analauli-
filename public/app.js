@@ -579,13 +579,48 @@ function estilosFacturaReservaHtml() {
             padding-top: 4px;
             border-top: 1px dashed #000;
         }
+        .factura-dian {
+            text-align: center;
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px dashed #000;
+        }
+        .factura-dian-titulo {
+            font-weight: bold;
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+        .factura-qr {
+            display: block;
+            margin: 4px auto;
+            width: 42mm;
+            max-width: 100%;
+            height: auto;
+        }
+        .factura-cufe {
+            font-size: 8px;
+            word-break: break-all;
+            line-height: 1.25;
+            margin-top: 4px;
+            text-align: left;
+        }
+        .factura-dian-estado {
+            font-size: 9px;
+            margin-top: 4px;
+        }
         @media print {
             html, body { padding: 2mm 2mm; width: 80mm; }
         }
     `;
 }
 
-function construirFacturaReservaInnerHtml(r, tipo) {
+function formatoFechaFactura(valor) {
+    if (!valor) return new Date().toLocaleString('es-ES');
+    const d = new Date(valor);
+    return Number.isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-ES');
+}
+
+function construirFacturaReservaInnerHtml(r, tipo, comprobante) {
     const marca = datosMarcaHotelParaFactura();
     const esChin = tipo === 'chinchorro';
     const fnTotal = esChin ? valorMonetarioReservaChinchorro : valorMonetarioReservaHabitacion;
@@ -601,8 +636,18 @@ function construirFacturaReservaInnerHtml(r, tipo) {
     const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—';
     const fi = new Date(r.fecha_ingreso).toLocaleDateString('es-ES');
     const fs = new Date(r.fecha_salida).toLocaleDateString('es-ES');
-    const hoy = new Date().toLocaleString('es-ES');
     const prefijo = esChin ? 'CH' : 'HAB';
+    const hotelDian = datosHotelCache || {};
+    const numeroFactura =
+        comprobante && (comprobante.numero_dian || comprobante.numero)
+            ? escapeHtmlCal(comprobante.numero_dian || comprobante.numero)
+            : '—';
+    const lineaResolucion =
+        comprobante && comprobante.dian_estado === 'aceptado' && hotelDian.dian_resolucion
+            ? `<div class="factura-linea factura-linea--sub"><span>RESOLUCION DIAN</span><span>${escapeHtmlCal(hotelDian.dian_resolucion)}</span></div>`
+            : '';
+    const fechaEmision = formatoFechaFactura(comprobante && comprobante.fecha_emision);
+    const refReserva = `${prefijo}-${r.id}`;
     const logoHtml = marca.logoUrl
         ? `<img src="${escapeHtmlCal(marca.logoUrl)}" alt="Logo" class="factura-logo">`
         : `<div class="factura-logo-placeholder" aria-hidden="true">🏨</div>`;
@@ -613,6 +658,27 @@ function construirFacturaReservaInnerHtml(r, tipo) {
             ? `<div class="factura-linea factura-linea--saldo"><span>SALDO PENDIENTE</span><span>${escapeHtmlCal(formatoMoneda(saldo))}</span></div>`
             : `<div class="factura-linea"><span>ESTADO PAGO</span><span>PAGADO</span></div>`;
 
+    const tieneDian =
+        comprobante &&
+        comprobante.dian_estado === 'aceptado' &&
+        comprobante.cufe;
+    const qrSrc =
+        comprobante && comprobante.qr_imagen
+            ? comprobante.qr_imagen
+            : comprobante && comprobante.id
+              ? `${window.location.origin}/api/comprobantes/${comprobante.id}/qr.png`
+              : '';
+    const bloqueDian = tieneDian
+        ? `
+        <div class="factura-sep"></div>
+        <div class="factura-dian">
+            <div class="factura-dian-titulo">FACTURA ELECTRONICA DIAN</div>
+            <img class="factura-qr" src="${escapeHtmlCal(qrSrc)}" alt="QR DIAN">
+            <div class="factura-cufe"><strong>CUFE:</strong> ${escapeHtmlCal(comprobante.cufe)}</div>
+            <div class="factura-dian-estado">${escapeHtmlCal(comprobante.dian_respuesta || 'Validado DIAN')}</div>
+        </div>`
+        : '';
+
     return `
     <div class="factura-ticket">
         <header class="factura-cabecera">
@@ -621,8 +687,10 @@ function construirFacturaReservaInnerHtml(r, tipo) {
             <p>COMPROBANTE DE RESERVA</p>
         </header>
         <div class="factura-sep"></div>
-        <div class="factura-linea"><span>NO. COMPROBANTE</span><span>${prefijo}-${r.id}</span></div>
-        <div class="factura-linea"><span>FECHA EMISION</span><span>${escapeHtmlCal(hoy)}</span></div>
+        <div class="factura-linea factura-linea--total"><span>NO. FACTURA</span><span>${numeroFactura}</span></div>
+        ${lineaResolucion}
+        <div class="factura-linea"><span>REF. RESERVA</span><span>${refReserva}</span></div>
+        <div class="factura-linea"><span>FECHA EMISION</span><span>${escapeHtmlCal(fechaEmision)}</span></div>
         <div class="factura-linea"><span>ESTADO</span><span>${escapeHtmlCal(r.estado || '—')}</span></div>
         <div class="factura-sep"></div>
         <div class="factura-seccion-titulo">DATOS DEL CLIENTE</div>
@@ -645,6 +713,7 @@ function construirFacturaReservaInnerHtml(r, tipo) {
         <div class="factura-linea factura-linea--total"><span>TOTAL</span><span>${escapeHtmlCal(formatoMoneda(total))}</span></div>
         <div class="factura-linea"><span>ABONADO</span><span>${escapeHtmlCal(formatoMoneda(abonado))}</span></div>
         ${lineaSaldo}
+        ${bloqueDian}
         <footer class="factura-pie">
             ${escapeHtmlCal(marca.nombre)}<br>
             Gracias por su preferencia
@@ -652,14 +721,15 @@ function construirFacturaReservaInnerHtml(r, tipo) {
     </div>`;
 }
 
-function construirFacturaReservaDocumento(r, tipo) {
-    const inner = construirFacturaReservaInnerHtml(r, tipo);
+function construirFacturaReservaDocumento(r, tipo, comprobante) {
+    const inner = construirFacturaReservaInnerHtml(r, tipo, comprobante);
     const prefijo = tipo === 'chinchorro' ? 'CH' : 'HAB';
+    const num = (comprobante && comprobante.numero) || `${prefijo}-${r.id}`;
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Factura reserva ${prefijo}-${r.id}</title>
+    <title>Factura ${num} - ${prefijo}-${r.id}</title>
     <style>${estilosFacturaReservaHtml()}</style>
 </head>
 <body>${inner}</body>
@@ -752,7 +822,7 @@ function ejecutarImpresionFacturaReserva() {
     });
 }
 
-async function imprimirFacturaReserva(tipo, id) {
+async function asegurarDatosHotelFactura() {
     if (!datosHotelCache) {
         try {
             const response = await fetchWithAuth(`${API_URL}/hotel`);
@@ -763,27 +833,147 @@ async function imprimirFacturaReserva(tipo, id) {
             console.warn('No se pudo cargar datos del hotel para la factura:', e);
         }
     }
-    const r =
-        tipo === 'chinchorro'
-            ? reservasChinchorros.find((x) => Number(x.id) === Number(id))
-            : reservas.find((x) => Number(x.id) === Number(id));
+}
+
+function obtenerReservaParaFactura(tipo, id) {
+    return tipo === 'chinchorro'
+        ? reservasChinchorros.find((x) => Number(x.id) === Number(id))
+        : reservas.find((x) => Number(x.id) === Number(id));
+}
+
+async function mostrarFacturaReservaEnModal(r, tipo, comprobante, autoImprimir) {
+    const contenedor = document.getElementById('facturaReservaContenido');
+    const modal = document.getElementById('modalFacturaReserva');
+    const titulo = document.getElementById('tituloModalFactura');
+    if (!contenedor || !modal) {
+        alert('No se pudo abrir la vista de factura.');
+        return;
+    }
+    if (titulo) {
+        titulo.textContent =
+            comprobante && comprobante.dian_estado === 'aceptado'
+                ? `Factura DIAN ${comprobante.numero || ''}`
+                : 'Vista previa — ticket 80 mm';
+    }
+
+    facturaReservaDocumentoCache = construirFacturaReservaDocumento(r, tipo, comprobante);
+    contenedor.innerHTML = construirFacturaReservaInnerHtml(r, tipo, comprobante);
+    modal.classList.add('active');
+    await esperarImagenesEnContenedor(contenedor);
+    if (autoImprimir) {
+        ejecutarImpresionFacturaReserva();
+    }
+}
+
+function dianEnvioAutomaticoActivo(hotel) {
+    const h = hotel || datosHotelCache || {};
+    return h.dian_envio_automatico === 1 || h.dian_envio_automatico === true || h.dian_envio_automatico === '1';
+}
+
+function mostrarBotonDianManualEnReservas() {
+    return !dianEnvioAutomaticoActivo(datosHotelCache);
+}
+
+async function enviarFacturaDianInterno(tipo, id, opciones = {}) {
+    const { confirmar = true, autoImprimir = false, mostrarAlertaExito = true } = opciones;
+    await asegurarDatosHotelFactura();
+    const r = obtenerReservaParaFactura(tipo, id);
+    if (!r) {
+        alert('No se encontró la reserva.');
+        return false;
+    }
+
+    if (!hotelTieneResolucionDianCliente(datosHotelCache)) {
+        alert(
+            'Configure primero la resolución DIAN en Configuración → Facturación electrónica DIAN (NIT, resolución, prefijo, rango y clave técnica).'
+        );
+        return false;
+    }
+
+    if (confirmar && !confirm('¿Enviar esta reserva a la DIAN y generar factura electrónica con CUFE y código QR?')) {
+        return false;
+    }
+
+    try {
+        const resp = await fetchWithAuth(`${API_URL}/comprobantes/reserva/dian`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tipo, reserva_id: id })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            alert(data.error || 'No se pudo enviar la factura a la DIAN.');
+            return false;
+        }
+        const comprobante = {
+            ...data.comprobante,
+            numero_dian: data.comprobante.numero_dian || data.comprobante.numero
+        };
+        await mostrarFacturaReservaEnModal(r, tipo, comprobante, autoImprimir);
+        if (mostrarAlertaExito && !autoImprimir) {
+            alert(
+                (data.dian && data.dian.mensaje) ||
+                    `Factura ${comprobante.numero_dian || comprobante.numero} aceptada por DIAN. CUFE y QR agregados.`
+            );
+        }
+        return true;
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión al enviar a la DIAN.');
+        return false;
+    }
+}
+
+async function imprimirFacturaReserva(tipo, id) {
+    await asegurarDatosHotelFactura();
+    const r = obtenerReservaParaFactura(tipo, id);
     if (!r) {
         alert('No se encontró la reserva.');
         return;
     }
 
-    const contenedor = document.getElementById('facturaReservaContenido');
-    const modal = document.getElementById('modalFacturaReserva');
-    if (!contenedor || !modal) {
-        alert('No se pudo abrir la vista de factura.');
+    if (dianEnvioAutomaticoActivo(datosHotelCache) && hotelTieneResolucionDianCliente(datosHotelCache)) {
+        await enviarFacturaDianInterno(tipo, id, {
+            confirmar: false,
+            autoImprimir: true,
+            mostrarAlertaExito: false
+        });
         return;
     }
 
-    facturaReservaDocumentoCache = construirFacturaReservaDocumento(r, tipo);
-    contenedor.innerHTML = construirFacturaReservaInnerHtml(r, tipo);
-    modal.classList.add('active');
-    await esperarImagenesEnContenedor(contenedor);
-    ejecutarImpresionFacturaReserva();
+    let comprobante = null;
+    try {
+        const respComp = await fetchWithAuth(`${API_URL}/comprobantes/reserva`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tipo, reserva_id: id })
+        });
+        const dataComp = await respComp.json().catch(() => ({}));
+        if (!respComp.ok) {
+            const msg =
+                dataComp.error ||
+                (respComp.status === 404
+                    ? 'El servidor no tiene la versión actualizada. Reinicie con npm start y recargue la página (Ctrl+F5).'
+                    : 'No se pudo asignar el consecutivo de la factura.');
+            alert(msg);
+            return;
+        }
+        comprobante = dataComp;
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión al generar el consecutivo de la factura.');
+        return;
+    }
+
+    await mostrarFacturaReservaEnModal(r, tipo, comprobante, true);
+}
+
+async function enviarFacturaDianReserva(tipo, id) {
+    await enviarFacturaDianInterno(tipo, id, {
+        confirmar: true,
+        autoImprimir: false,
+        mostrarAlertaExito: true
+    });
 }
 
 function htmlAccionesReservaHabitacion(reserva) {
@@ -794,7 +984,12 @@ function htmlAccionesReservaHabitacion(reserva) {
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
-                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('habitacion', ${id})" title="Imprimir factura">🖨️ Imprimir</button>
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('habitacion', ${id})" title="Imprimir factura${dianEnvioAutomaticoActivo() ? ' (envía a DIAN automático)' : ''}">🖨️ Imprimir</button>
+                    ${
+                        mostrarBotonDianManualEnReservas()
+                            ? `<button type="button" class="btn-secondary btn-small btn-reserva" onclick="enviarFacturaDianReserva('habitacion', ${id})" title="Enviar a DIAN">📤 DIAN</button>`
+                            : ''
+                    }
                     ${botonesPagoReserva(reserva, 'habitacion', saldoReservaHabitacion)}
                 </div>
                 <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
@@ -818,7 +1013,12 @@ function htmlAccionesReservaChinchorro(r) {
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReservaChinchorro(${id})" title="Modificar reserva">✏️ Modificar</button>
-                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('chinchorro', ${id})" title="Imprimir factura">🖨️ Imprimir</button>
+                    <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('chinchorro', ${id})" title="Imprimir factura${dianEnvioAutomaticoActivo() ? ' (envía a DIAN automático)' : ''}">🖨️ Imprimir</button>
+                    ${
+                        mostrarBotonDianManualEnReservas()
+                            ? `<button type="button" class="btn-secondary btn-small btn-reserva" onclick="enviarFacturaDianReserva('chinchorro', ${id})" title="Enviar a DIAN">📤 DIAN</button>`
+                            : ''
+                    }
                     ${botonesPagoReserva(r, 'chinchorro', saldoReservaChinchorro)}
                 </div>
                 <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
@@ -1881,6 +2081,131 @@ function rellenarCamposTemaDesdeHotel(data) {
     }
     if (typeof TemaHotel !== 'undefined' && TemaHotel.aplicarLogo) {
         TemaHotel.aplicarLogo(document, data);
+    }
+    rellenarCamposFacturacionDian(data);
+}
+
+function datosFacturacionDianDesdeFormulario() {
+    return {
+        nit: document.getElementById('hotelNit')?.value.trim() || '',
+        nit_dv: document.getElementById('hotelNitDv')?.value.trim() || '',
+        razon_social: document.getElementById('hotelRazonSocial')?.value.trim() || '',
+        dian_resolucion: document.getElementById('hotelDianResolucion')?.value.trim() || '',
+        dian_resolucion_fecha: document.getElementById('hotelDianResolucionFecha')?.value || '',
+        dian_prefijo: document.getElementById('hotelDianPrefijo')?.value.trim().toUpperCase() || '',
+        dian_rango_desde: document.getElementById('hotelDianRangoDesde')?.value || '',
+        dian_rango_hasta: document.getElementById('hotelDianRangoHasta')?.value || '',
+        dian_vigencia_desde: document.getElementById('hotelDianVigenciaDesde')?.value || '',
+        dian_vigencia_hasta: document.getElementById('hotelDianVigenciaHasta')?.value || '',
+        dian_clave_tecnica: document.getElementById('hotelDianClaveTecnica')?.value.trim() || '',
+        dian_envio_automatico: document.getElementById('hotelDianEnvioAutomatico')?.checked ? 1 : 0
+    };
+}
+
+function hotelTieneResolucionDianCliente(hotel) {
+    const h = hotel || {};
+    const desde = parseInt(h.dian_rango_desde, 10);
+    const hasta = parseInt(h.dian_rango_hasta, 10);
+    return !!(
+        String(h.nit || '').trim() &&
+        String(h.dian_resolucion || '').trim() &&
+        String(h.dian_prefijo || '').trim() &&
+        String(h.dian_clave_tecnica || '').trim() &&
+        Number.isFinite(desde) &&
+        Number.isFinite(hasta) &&
+        hasta >= desde
+    );
+}
+
+function actualizarEstadoResolucionDianUi(hotel) {
+    const el = document.getElementById('estadoResolucionDian');
+    if (!el) return;
+    if (hotelTieneResolucionDianCliente(hotel)) {
+        const pref = String(hotel.dian_prefijo || '').toUpperCase();
+        const modo = dianEnvioAutomaticoActivo(hotel)
+            ? 'Envío automático al imprimir'
+            : 'Envío manual con botón 📤 DIAN';
+        el.textContent = `Resolución lista: ${hotel.dian_resolucion} · Prefijo ${pref} · Rango ${hotel.dian_rango_desde} - ${hotel.dian_rango_hasta} · ${modo}`;
+        el.classList.remove('texto-error');
+    } else {
+        el.textContent =
+            'Complete NIT, número de resolución, prefijo, rango (desde/hasta) y clave técnica para habilitar el envío a la DIAN.';
+        el.classList.add('texto-error');
+    }
+}
+
+function rellenarCamposFacturacionDian(data) {
+    const d = data || {};
+    const elNit = document.getElementById('hotelNit');
+    if (!elNit) return;
+    elNit.value = d.nit ? String(d.nit) : '';
+    const elDv = document.getElementById('hotelNitDv');
+    if (elDv) elDv.value = d.nit_dv ? String(d.nit_dv) : '';
+    const elRazon = document.getElementById('hotelRazonSocial');
+    if (elRazon) elRazon.value = d.razon_social ? String(d.razon_social) : '';
+    const elRes = document.getElementById('hotelDianResolucion');
+    if (elRes) elRes.value = d.dian_resolucion ? String(d.dian_resolucion) : '';
+    const elResF = document.getElementById('hotelDianResolucionFecha');
+    if (elResF) elResF.value = d.dian_resolucion_fecha ? String(d.dian_resolucion_fecha).slice(0, 10) : '';
+    const elPref = document.getElementById('hotelDianPrefijo');
+    if (elPref) elPref.value = d.dian_prefijo ? String(d.dian_prefijo) : '';
+    const elDesde = document.getElementById('hotelDianRangoDesde');
+    if (elDesde) elDesde.value = d.dian_rango_desde != null ? String(d.dian_rango_desde) : '';
+    const elHasta = document.getElementById('hotelDianRangoHasta');
+    if (elHasta) elHasta.value = d.dian_rango_hasta != null ? String(d.dian_rango_hasta) : '';
+    const elVigD = document.getElementById('hotelDianVigenciaDesde');
+    if (elVigD) elVigD.value = d.dian_vigencia_desde ? String(d.dian_vigencia_desde).slice(0, 10) : '';
+    const elVigH = document.getElementById('hotelDianVigenciaHasta');
+    if (elVigH) elVigH.value = d.dian_vigencia_hasta ? String(d.dian_vigencia_hasta).slice(0, 10) : '';
+    const elClave = document.getElementById('hotelDianClaveTecnica');
+    if (elClave) elClave.value = d.dian_clave_tecnica ? String(d.dian_clave_tecnica) : '';
+    const elAuto = document.getElementById('hotelDianEnvioAutomatico');
+    if (elAuto) elAuto.checked = dianEnvioAutomaticoActivo(d);
+    actualizarEstadoResolucionDianUi(d);
+}
+
+async function guardarFacturacionDian() {
+    const payload = datosFacturacionDianDesdeFormulario();
+    if (!payload.nit) {
+        alert('El NIT del establecimiento es obligatorio.');
+        return;
+    }
+    if (!payload.dian_resolucion) {
+        alert('El número de resolución DIAN es obligatorio.');
+        return;
+    }
+    if (!payload.dian_prefijo) {
+        alert('El prefijo de facturación es obligatorio.');
+        return;
+    }
+    if (!payload.dian_clave_tecnica) {
+        alert('La clave técnica DIAN es obligatoria.');
+        return;
+    }
+    const desde = parseInt(payload.dian_rango_desde, 10);
+    const hasta = parseInt(payload.dian_rango_hasta, 10);
+    if (!Number.isFinite(desde) || !Number.isFinite(hasta) || desde < 1 || hasta < desde) {
+        alert('El rango autorizado (desde / hasta) no es válido.');
+        return;
+    }
+    try {
+        const response = await fetchWithAuth(`${API_URL}/hotel/facturacion`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            alert(data.error || 'No se pudo guardar la resolución DIAN.');
+            return;
+        }
+        datosHotelCache = { ...(datosHotelCache || {}), ...payload };
+        actualizarEstadoResolucionDianUi(datosHotelCache);
+        await Promise.all([cargarReservas(), cargarReservasChinchorros()]);
+        alert('Resolución y datos de facturación DIAN guardados correctamente.');
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión al guardar la resolución DIAN.');
     }
 }
 
