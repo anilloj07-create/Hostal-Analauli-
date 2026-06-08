@@ -128,7 +128,7 @@
                             placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                             oninput="actualizarFiltroModulo('reservas', this.value)">
                     </div>
-                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas. Use <strong>Confirmar Reserva</strong> al entregar la habitación al huésped, y <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
+                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas. Use <strong>Check de Reserva</strong> al entregar la habitación al huésped (validación Sí/No), y <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
 
                     <h3 class="subsection-title">Registro de reservas</h3>
                     <div class="table-container reservas-tabla-unificada-wrap">
@@ -1153,10 +1153,10 @@
         </div>
     </div>
 
-    <!-- Modal confirmar reserva -->
+    <!-- Modal Check de Reserva -->
     <div id="modalConfirmarCheckin" class="modal">
         <div class="modal-content modal-confirm-checkin">
-            <h2>Confirmar reserva</h2>
+            <h2>Check de Reserva</h2>
             <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Está seguro de que desea confirmar esta reserva?</p>
             <div class="modal-actions modal-actions-confirm-sino">
                 <button type="button" class="btn-primary btn-confirm-si" onclick="responderConfirmarCheckin(true)">Sí</button>
@@ -1166,6 +1166,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=58"></script>
+    <script src="app.js?v=59"></script>
 </body>
 </html>

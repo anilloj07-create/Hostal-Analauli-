@@ -1076,7 +1076,7 @@ function htmlAccionesReservaHabitacion(reserva) {
                 <div class="reserva-acciones-grupo">
                     ${
                         puedeConfirmarReserva
-                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="confirmarReservaHuesped(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`
+                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="checkDeReserva(${id})" title="Validar y confirmar la entrega de la reserva al huésped">Check de Reserva</button>`
                             : ''
                     }
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
@@ -3867,7 +3867,7 @@ function htmlAccionesAcomodacionDia(r) {
     if (puedeConfirmar) {
         return `
         <div class="acomodacion-dia-acciones">
-            <button type="button" class="btn-primary btn-small" onclick="confirmarReservaHuesped(${id})" title="Confirmar entrega de la reserva">Confirmar Reserva</button>
+            <button type="button" class="btn-primary btn-small" onclick="checkDeReserva(${id})" title="Validar y confirmar la entrega de la reserva">Check de Reserva</button>
         </div>`;
     }
     const saldo = saldoReservaHabitacion(r);
@@ -5271,11 +5271,13 @@ async function guardarReserva(event) {
 
 let confirmarCheckinResolver = null;
 
-function preguntarConfirmarReservaHuesped() {
+function preguntarCheckDeReserva() {
     return new Promise((resolve) => {
         confirmarCheckinResolver = resolve;
         const modal = document.getElementById('modalConfirmarCheckin');
+        const titulo = modal && modal.querySelector('h2');
         const texto = document.getElementById('textoModalConfirmarCheckin');
+        if (titulo) titulo.textContent = 'Check de Reserva';
         if (texto) {
             texto.textContent = '¿Está seguro de que desea confirmar esta reserva?';
         }
@@ -5292,8 +5294,8 @@ function responderConfirmarCheckin(si) {
     }
 }
 
-async function confirmarReservaHuesped(id) {
-    const confirmado = await preguntarConfirmarReservaHuesped();
+async function checkDeReserva(id) {
+    const confirmado = await preguntarCheckDeReserva();
     if (!confirmado) {
         return;
     }
@@ -5316,8 +5318,12 @@ async function confirmarReservaHuesped(id) {
     }
 }
 
+async function confirmarReservaHuesped(id) {
+    return checkDeReserva(id);
+}
+
 async function confirmarCheckinReserva(id) {
-    return confirmarReservaHuesped(id);
+    return checkDeReserva(id);
 }
 
 async function finalizarReservaSalida(id) {
