@@ -448,7 +448,7 @@ function saldoReservaChinchorro(r) {
 }
 
 function reservaTieneSaldoPendiente(r, fnSaldo) {
-    return r.estado !== 'Cancelada' && fnSaldo(r) > 0.005;
+    return r.estado !== 'Cancelada' && !reservaEsNoShow(r) && fnSaldo(r) > 0.005;
 }
 
 function reservaEstaTotalizada(r, fnTotal) {
@@ -481,7 +481,7 @@ function htmlCeldaSaldoReserva(r, fnSaldo) {
 }
 
 function botonesPagoReserva(r, tipo, fnSaldo) {
-    if (r.estado === 'Cancelada') return '';
+    if (r.estado === 'Cancelada' || reservaEsNoShow(r)) return '';
     const id = Number(r.id);
     const saldo = fnSaldo(r);
     if (saldo <= 0.005) return '';
@@ -979,10 +979,17 @@ async function enviarFacturaDianReserva(tipo, id) {
 function htmlAccionesReservaHabitacion(reserva) {
     const id = Number(reserva.id);
     const activa = reserva.estado === 'Activa';
+    const pendienteCheckin = reservaPendienteCheckin(reserva);
+    const puedeGestionar = activa || pendienteCheckin;
     return `
         <td class="td-acciones-reserva">
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
+                    ${
+                        pendienteCheckin
+                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="confirmarCheckinReserva(${id})" title="Confirmar llegada del huésped">✅ Check-in</button>`
+                            : ''
+                    }
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="imprimirFacturaReserva('habitacion', ${id})" title="Imprimir factura${dianEnvioAutomaticoActivo() ? ' (envía a DIAN automático)' : ''}">🖨️ Imprimir</button>
                     ${
@@ -994,7 +1001,7 @@ function htmlAccionesReservaHabitacion(reserva) {
                 </div>
                 <div class="reserva-acciones-grupo reserva-acciones-grupo--fin">
                     ${
-                        activa
+                        puedeGestionar
                             ? `<button type="button" class="btn-secondary btn-small btn-reserva" onclick="cancelarReserva(${id})" title="Cancelar reserva">❌ Cancelar</button>`
                             : ''
                     }
@@ -1099,8 +1106,33 @@ function ymdEnRangoReserva(ymd, ing, sal) {
 }
 
 function reservaActivaEnFecha(r, ymd) {
-    if (r.estado !== 'Activa') return false;
-    return ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r));
+    if (!r || r.estado === 'Cancelada' || r.estado === 'Finalizada' || reservaEsNoShow(r)) return false;
+    if (!ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r))) return false;
+    if (reservaPendienteCheckin(r)) {
+        return ymd === ymdReservaIngreso(r);
+    }
+    if (String(r.estado) === 'Activa') {
+        if (reservaEstaConCheckin(r)) return true;
+        return ymd < ymdReservaIngreso(r);
+    }
+    return false;
+}
+
+function reservaOcupadaEnFecha(r, ymd) {
+    return reservaEstaConCheckin(r) && ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r));
+}
+
+function reservaPendienteCheckinEnFecha(r, ymd) {
+    return reservaPendienteCheckin(r) && ymd === ymdReservaIngreso(r);
+}
+
+function reservaFuturaConfirmadaEnFecha(r, ymd) {
+    return (
+        String(r.estado) === 'Activa' &&
+        !r.checkin_at &&
+        ymd < ymdReservaIngreso(r) &&
+        ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r))
+    );
 }
 
 function contarDiasSolapadosYMD(ing, sal, desdeYmd, hastaYmd) {
@@ -1155,7 +1187,7 @@ function listarDiasEntreYMD(desde, hasta) {
 function recursosOcupadosEnFecha(ymd) {
     const ids = new Set();
     reservas.forEach((r) => {
-        if (reservaActivaEnFecha(r, ymd)) ids.add(`h-${r.habitacion_id}`);
+        if (reservaOcupadaEnFecha(r, ymd)) ids.add(`h-${r.habitacion_id}`);
     });
     reservasChinchorros.forEach((r) => {
         if (reservaActivaEnFecha(r, ymd)) ids.add(`c-${r.chinchorro_id}`);
@@ -1178,7 +1210,7 @@ function ocupacionPromedioEnDias(diasYmd) {
 function personasHospedadasEnFecha(ymd) {
     const ids = new Set();
     reservas.forEach((r) => {
-        if (reservaActivaEnFecha(r, ymd) && r.huesped_id != null) ids.add(`h-${r.huesped_id}`);
+        if (reservaOcupadaEnFecha(r, ymd) && r.huesped_id != null) ids.add(`h-${r.huesped_id}`);
     });
     reservasChinchorros.forEach((r) => {
         if (reservaActivaEnFecha(r, ymd) && r.huesped_id != null) ids.add(`c-${r.huesped_id}`);
@@ -1189,7 +1221,7 @@ function personasHospedadasEnFecha(ymd) {
 function ingresosDelDia(ymd) {
     let total = 0;
     reservas.forEach((r) => {
-        if (reservaActivaEnFecha(r, ymd)) total += tarifaDiariaReservaHabitacion(r);
+        if (reservaOcupadaEnFecha(r, ymd)) total += tarifaDiariaReservaHabitacion(r);
     });
     reservasChinchorros.forEach((r) => {
         if (reservaActivaEnFecha(r, ymd)) total += tarifaDiariaReservaChinchorro(r);
@@ -1746,26 +1778,45 @@ function tipoRecursoDesdeWrapCalendario(wrapEl) {
     return wrapEl.id === 'calendarioChinchorrosWrap' ? 'chinchorro' : 'habitacion';
 }
 
-function reservaActivaEnCeldaCalendario(recursoId, ymd, tipo) {
-    const lista = tipo === 'chinchorro' ? reservasChinchorros : reservas;
-    const campo = tipo === 'chinchorro' ? 'chinchorro_id' : 'habitacion_id';
-    return lista.find((r) => {
-        if (r.estado !== 'Activa') return false;
-        if (Number(r[campo]) !== Number(recursoId)) return false;
-        const ing = String(r.fecha_ingreso).slice(0, 10);
-        const sal = String(r.fecha_salida).slice(0, 10);
-        return ymd >= ing && ymd <= sal;
-    });
-}
-
-function diaOcupadoPorReservaActiva(recursoId, ymd, listaReservas, idCampo) {
-    return listaReservas.some((r) => {
-        if (r.estado !== 'Activa') return false;
+function reservaEnCeldaCalendarioLista(recursoId, ymd, listaReservas, idCampo) {
+    return listaReservas.find((r) => {
+        if (!reservaBloqueaHabitacion(r) || reservaEsNoShow(r)) return false;
         if (Number(r[idCampo]) !== Number(recursoId)) return false;
         const ing = String(r.fecha_ingreso).slice(0, 10);
         const sal = String(r.fecha_salida).slice(0, 10);
-        return ymd >= ing && ymd <= sal;
+        if (ymd < ing || ymd > sal) return false;
+        if (reservaPendienteCheckin(r)) return ymd === ing;
+        if (reservaEstaConCheckin(r)) return true;
+        if (String(r.estado) === 'Activa' && !r.checkin_at) return ymd < ing;
+        return false;
     });
+}
+
+function clasificarCeldaCalendarioReserva(r, ymd) {
+    if (!r || reservaEsNoShow(r)) return 'libre';
+    const ing = ymdReservaIngreso(r);
+    const sal = ymdReservaSalida(r);
+    if (!ymdEnRangoReserva(ymd, ing, sal)) return 'libre';
+    if (reservaPendienteCheckinEnFecha(r, ymd)) return 'pendiente-checkin';
+    if (reservaOcupadaEnFecha(r, ymd)) return 'ocupado';
+    if (String(r.estado) === 'Activa' && !r.checkin_at && ymd < ing) return 'reservado-futuro';
+    return 'libre';
+}
+
+function textoHuespedReservaCalendario(r) {
+    if (!r) return '';
+    return `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || 'Huésped';
+}
+
+function reservaActivaEnCeldaCalendario(recursoId, ymd, tipo) {
+    const lista = tipo === 'chinchorro' ? reservasChinchorros : reservas;
+    const campo = tipo === 'chinchorro' ? 'chinchorro_id' : 'habitacion_id';
+    return reservaEnCeldaCalendarioLista(recursoId, ymd, lista, campo);
+}
+
+function diaOcupadoPorReservaActiva(recursoId, ymd, listaReservas, idCampo) {
+    const r = reservaEnCeldaCalendarioLista(recursoId, ymd, listaReservas, idCampo);
+    return clasificarCeldaCalendarioReserva(r, ymd) === 'ocupado';
 }
 
 function escapeHtmlCal(str) {
@@ -1799,15 +1850,30 @@ function construirTablaCalendario(esquinaLabel, filas, dias, idCampo, listaReser
     filas.forEach((f) => {
         body += `<tr><th class="cal-recurso" scope="row">${escapeHtmlCal(f.label)}</th>`;
         dias.forEach(({ ymd }) => {
-            const ocupado = diaOcupadoPorReservaActiva(f.id, ymd, listaReservas, idCampo);
+            const reservaCelda = reservaEnCeldaCalendarioLista(f.id, ymd, listaReservas, idCampo);
+            const tipoCelda = clasificarCeldaCalendarioReserva(reservaCelda, ymd);
+            const ocupado = tipoCelda === 'ocupado';
+            const pendienteCheckin = tipoCelda === 'pendiente-checkin';
             const bloqueado = !!f.noReservable;
             let cls;
             let estadoTxt;
             let inner;
+            let huespedNombre = '';
+            if (ocupado || pendienteCheckin) {
+                huespedNombre = textoHuespedReservaCalendario(reservaCelda);
+            }
             if (ocupado) {
                 cls = 'cal-ocupado';
-                estadoTxt = 'Ocupado (clic para ver reserva)';
+                estadoTxt = huespedNombre
+                    ? `Ocupado por ${huespedNombre} — clic para ver reserva`
+                    : 'Ocupado (clic para ver reserva)';
                 inner = '●';
+            } else if (pendienteCheckin) {
+                cls = 'cal-pendiente-checkin';
+                estadoTxt = huespedNombre
+                    ? `Pendiente de check-in: ${huespedNombre}`
+                    : 'Pendiente de check-in';
+                inner = '⏳';
             } else if (bloqueado) {
                 cls = 'cal-no-reservable';
                 estadoTxt = 'En limpieza o fuera de servicio — no reservable';
@@ -1818,7 +1884,8 @@ function construirTablaCalendario(esquinaLabel, filas, dias, idCampo, listaReser
                 inner = '+';
             }
             const tituloCelda = attrEsc(`${f.label} · ${ymd} · ${estadoTxt}`);
-            body += `<td class="cal-cell cal-cell-click ${cls}" data-recurso-id="${f.id}" data-ymd="${ymd}" data-ocupado="${ocupado ? '1' : '0'}" data-bloqueado="${bloqueado ? '1' : '0'}" title="${tituloCelda}" role="button" tabindex="0"><span class="cal-cell-inner">${inner}</span></td>`;
+            const huespedAttr = huespedNombre ? ` data-huesped="${attrEsc(huespedNombre)}"` : '';
+            body += `<td class="cal-cell cal-cell-click ${cls}" data-recurso-id="${f.id}" data-ymd="${ymd}" data-ocupado="${ocupado ? '1' : '0'}" data-pendiente-checkin="${pendienteCheckin ? '1' : '0'}" data-bloqueado="${bloqueado ? '1' : '0'}"${huespedAttr} title="${tituloCelda}" role="button" tabindex="0" aria-label="${tituloCelda}"><span class="cal-cell-inner">${inner}</span></td>`;
         });
         body += '</tr>';
     });
@@ -1975,8 +2042,20 @@ async function onClickCalendarioCelda(ev) {
         return;
     }
 
+    const pendienteCheckin = td.dataset.pendienteCheckin === '1';
+    if (pendienteCheckin && tipo === 'habitacion') {
+        const lista = reservas;
+        const r = reservaEnCeldaCalendarioLista(recursoId, ymd, lista, 'habitacion_id');
+        if (r) {
+            await confirmarCheckinReserva(r.id);
+        }
+        return;
+    }
+
     if (ocupado) {
-        const r = reservaActivaEnCeldaCalendario(recursoId, ymd, tipo);
+        const lista = tipo === 'chinchorro' ? reservasChinchorros : reservas;
+        const campo = tipo === 'chinchorro' ? 'chinchorro_id' : 'habitacion_id';
+        const r = reservaEnCeldaCalendarioLista(recursoId, ymd, lista, campo);
         if (r) {
             const ver = confirm(
                 'Este día ya tiene una reserva activa.\n\n¿Desea abrir esa reserva para modificarla?'
@@ -2424,7 +2503,33 @@ function claseEstadoBadgeRecurso(estado) {
 }
 
 function habitacionConReservaActivaHoy(hab) {
-    return Number(hab && hab.reservas_activas) > 0;
+    return Number(hab && (hab.reservas_ocupadas_hoy ?? hab.reservas_activas)) > 0;
+}
+
+function reservaEstaConCheckin(r) {
+    return r && String(r.estado) === 'Activa' && r.checkin_at != null && String(r.checkin_at).trim() !== '';
+}
+
+function reservaPendienteCheckin(r) {
+    return r && String(r.estado) === 'Pendiente de Check-in';
+}
+
+function reservaEsNoShow(r) {
+    return r && String(r.estado) === 'No Presentado (No Show)';
+}
+
+function reservaBloqueaHabitacion(r) {
+    const est = r && r.estado ? String(r.estado) : '';
+    return est === 'Activa' || est === 'Pendiente de Check-in';
+}
+
+function claseEstadoReservaHabitacion(estado) {
+    const e = String(estado || '');
+    if (e === 'Activa') return 'estado-disponible';
+    if (e === 'Pendiente de Check-in') return 'estado-reservada';
+    if (e === 'No Presentado (No Show)') return 'estado-fuera-de-servicio';
+    if (e === 'Finalizada') return 'estado-en-limpieza';
+    return 'estado-ocupada';
 }
 
 function habitacionEstadoSoloLecturaEnListado(hab) {
@@ -2449,12 +2554,98 @@ function textoAyudaEstadoHabitacionListado(hab) {
     return '';
 }
 
-function htmlEstadoHabitacionInventario(hab) {
-    const est = ESTADOS_INVENTARIO.includes(hab.estado) ? hab.estado : 'Disponible';
+/** Estado real para mostrar (incluye ocupación por reserva activa hoy). */
+function estadoEfectivoHabitacion(hab) {
+    const est = ESTADOS_INVENTARIO.includes(hab && hab.estado) ? hab.estado : 'Disponible';
+    if (est === 'Fuera de servicio' || est === 'En limpieza') return est;
+    if (habitacionConReservaActivaHoy(hab)) return 'Ocupada';
+    return est;
+}
+
+function habitacionEstaOcupada(hab) {
+    return estadoEfectivoHabitacion(hab) === 'Ocupada';
+}
+
+function htmlEtiquetaEstadoHabitacion(hab) {
+    const est = estadoEfectivoHabitacion(hab);
     const cls = claseEstadoBadgeRecurso(est);
     const titulo = textoAyudaEstadoHabitacionListado(hab);
+    const etiqueta =
+        habitacionConReservaActivaHoy(hab) && est === 'Ocupada' ? `${est} (reserva)` : est;
+    return `<span class="${cls} estado-readonly estado-inline" title="${escapeHtmlCal(titulo)}">${escapeHtmlCal(etiqueta)}</span>`;
+}
 
-    if (habitacionEstadoSoloLecturaEnListado(hab)) {
+/** Huésped y saldo de la reserva activa hoy (API o listado de reservas en memoria). */
+function resolverOcupacionHabitacion(hab) {
+    if (!habitacionEstaOcupada(hab)) return null;
+
+    let nombre = hab.ocupante_nombre != null ? String(hab.ocupante_nombre).trim() : '';
+    let saldo = hab.reserva_saldo;
+    let reservaId = hab.reserva_activa_id;
+
+    if (!nombre) {
+        const hoy = fechaLocalYMD();
+        const r = reservas.find(
+            (x) =>
+                Number(x.habitacion_id) === Number(hab.id) &&
+                (reservaOcupadaEnFecha(x, hoy) || reservaPendienteCheckinEnFecha(x, hoy))
+        );
+        if (r) {
+            nombre = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim();
+            reservaId = r.id;
+            if (saldo == null || !Number.isFinite(Number(saldo))) {
+                saldo = saldoReservaHabitacion(r);
+            }
+        }
+    }
+
+    if (!nombre) return { nombre: null, saldo: null, reservaId: reservaId || null };
+    const saldoNum = saldo != null && Number.isFinite(Number(saldo)) ? Number(saldo) : null;
+    return { nombre, saldo: saldoNum, reservaId: reservaId || null };
+}
+
+function textoHuespedOcupandoHabitacion(hab) {
+    const occ = resolverOcupacionHabitacion(hab);
+    return occ && occ.nombre ? occ.nombre : '';
+}
+
+function htmlCeldaHuespedHabitacion(hab) {
+    if (!habitacionEstaOcupada(hab)) {
+        return '<span class="muted">—</span>';
+    }
+    const nombre = textoHuespedOcupandoHabitacion(hab);
+    if (nombre) {
+        return `<strong class="hab-huesped-nombre">${escapeHtmlCal(nombre)}</strong>`;
+    }
+    return '<span class="muted">Sin huésped registrado</span>';
+}
+
+/** Huésped y saldo al estar ocupada (sin repetir el estado; ese va solo en la cabecera). */
+function htmlDetalleOcupacionHabitacion(hab) {
+    if (!habitacionEstaOcupada(hab)) return '';
+    const occ = resolverOcupacionHabitacion(hab);
+    const nombre = occ && occ.nombre ? occ.nombre : 'Sin huésped registrado';
+    const saldo = occ && occ.saldo != null && Number.isFinite(occ.saldo) ? occ.saldo : 0;
+    const pagoHtml =
+        saldo > 0.005
+            ? `<span class="hab-ocupacion-saldo">Debe: <strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(saldo))}</strong></span>`
+            : '<span class="hab-ocupacion-saldo hab-ocupacion-saldo--ok">Al día</span>';
+    return `
+        <div class="hab-ocupacion-detalle" role="status">
+            <p class="hab-ocupacion-huesped"><span class="hab-ocupacion-label">Huésped:</span> <strong>${escapeHtmlCal(nombre)}</strong></p>
+            <p class="hab-ocupacion-pago">${pagoHtml}</p>
+        </div>
+    `;
+}
+
+function htmlEstadoHabitacionInventario(hab) {
+    const est = estadoEfectivoHabitacion(hab);
+    const cls = claseEstadoBadgeRecurso(est);
+    const titulo = textoAyudaEstadoHabitacionListado(hab);
+    const soloLectura =
+        habitacionEstadoSoloLecturaEnListado(hab) || habitacionConReservaActivaHoy(hab);
+
+    if (soloLectura) {
         const etiqueta =
             habitacionConReservaActivaHoy(hab) && est === 'Ocupada'
                 ? `${est} (reserva)`
@@ -2467,6 +2658,10 @@ function htmlEstadoHabitacionInventario(hab) {
         return `<option value="${escapeHtmlCal(e)}"${sel}>${escapeHtmlCal(e)}</option>`;
     }).join('');
     return `<select class="select-estado-inventario ${cls}" data-estado-prev="${escapeHtmlCal(est)}" title="${escapeHtmlCal('Solo Disponible o En limpieza')}" aria-label="Estado de la habitación" onchange="actualizarEstadoHabitacionListado(${Number(hab.id)}, this)">${opciones}</select>`;
+}
+
+function htmlEstadoInventarioHabitacionCompleto(hab) {
+    return htmlEstadoHabitacionInventario(hab);
 }
 
 function aplicarReglasSelectEstadoHabitacionModal(hab) {
@@ -3048,11 +3243,157 @@ async function actualizarIndicadoresOcupacion() {
     refrescarPanelesOcupacionDual();
 }
 
+function reservasHabitacionAlojadasHoy() {
+    const hoy = fechaLocalYMD();
+    return reservas
+        .filter((r) => reservaOcupadaEnFecha(r, hoy) || reservaPendienteCheckinEnFecha(r, hoy))
+        .sort((a, b) =>
+            etiquetaHabitacionReserva(a).localeCompare(etiquetaHabitacionReserva(b), 'es', { sensitivity: 'base' })
+        );
+}
+
+function textoPersonasReservaHabitacion(r) {
+    const adultos = Number(r.adultos || 1);
+    const ninos = Number(r.ninos || 0);
+    const hab = habitaciones.find((h) => Number(h.id) === Number(r.habitacion_id));
+    const cap = hab && hab.capacidad_personas ? Number(hab.capacidad_personas) : null;
+    const base = `${adultos} adulto(s)${ninos > 0 ? `, ${ninos} niño(s)` : ''}`;
+    return cap ? `${base} · máx. ${cap}` : base;
+}
+
+function htmlAccionesAcomodacionDia(r) {
+    const id = Number(r.id);
+    if (reservaPendienteCheckin(r)) {
+        return `
+        <div class="acomodacion-dia-acciones">
+            <button type="button" class="btn-primary btn-small" onclick="confirmarCheckinReserva(${id})" title="Confirmar llegada">✅ Check-in</button>
+        </div>`;
+    }
+    const saldo = saldoReservaHabitacion(r);
+    if (saldo <= 0.005) {
+        return '<span class="estado-badge estado-disponible">Pagado</span>';
+    }
+    return `
+        <div class="acomodacion-dia-acciones">
+            <button type="button" class="btn-primary btn-small" onclick="mostrarModalAbonoHabitacion(${id})" title="Registrar abono">Abonar</button>
+            <button type="button" class="btn-secondary btn-small" onclick="totalizarReservaHabitacionPago(${id})" title="Cobrar saldo completo">Totalizar</button>
+        </div>
+    `;
+}
+
+function renderAcomodacionDelDia() {
+    const panel = document.getElementById('panelAcomodacionDia');
+    if (!panel) return;
+
+    const hoy = fechaLocalYMD();
+    const lista = reservasHabitacionAlojadasHoy();
+    const fechaFmt = new Date(`${hoy}T12:00:00`).toLocaleDateString('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    if (lista.length === 0) {
+        panel.innerHTML = `
+            <div class="acomodacion-dia-header">
+                <h3 class="subsection-title subsection-title--compact">Acomodación de hoy</h3>
+                <span class="acomodacion-dia-fecha muted">${escapeHtmlCal(fechaFmt)}</span>
+            </div>
+            <p class="acomodacion-dia-vacio">No hay huéspedes alojados hoy en habitaciones.</p>
+        `;
+        return;
+    }
+
+    let sumTotal = 0;
+    let sumSaldo = 0;
+    let sumAbonado = 0;
+    lista.forEach((r) => {
+        const total = valorMonetarioReservaHabitacion(r);
+        sumTotal += total;
+        sumSaldo += saldoReservaHabitacion(r);
+        sumAbonado += Math.min(montoAbonadoReserva(r), total);
+    });
+
+    const filas = lista
+        .map((r) => {
+            const total = valorMonetarioReservaHabitacion(r);
+            const saldo = saldoReservaHabitacion(r);
+            const abonado = Math.min(montoAbonadoReserva(r), total);
+            const salida = new Date(`${ymdReservaSalida(r)}T12:00:00`).toLocaleDateString('es-ES');
+            const noches = unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+            const tarifa = Number(r.habitacion_precio_diario) || 0;
+            const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || 'Huésped';
+            const saldoHtml =
+                saldo > 0.005
+                    ? `<strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(saldo))}</strong>`
+                    : '<span class="muted">—</span>';
+            return `
+            <tr>
+                <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(r))}</strong></td>
+                <td>${escapeHtmlCal(huesped)}</td>
+                <td>${escapeHtmlCal(textoPersonasReservaHabitacion(r))}</td>
+                <td>${escapeHtmlCal(salida)}</td>
+                <td>${escapeHtmlCal(formatoMoneda(tarifa))}</td>
+                <td><strong>${escapeHtmlCal(formatoMoneda(total))}</strong> <span class="muted">(${noches} noches)</span></td>
+                <td>${escapeHtmlCal(formatoMoneda(abonado))}</td>
+                <td>${saldoHtml}</td>
+                <td class="td-acciones-acomodacion-dia">${htmlAccionesAcomodacionDia(r)}</td>
+            </tr>`;
+        })
+        .join('');
+
+    panel.innerHTML = `
+        <div class="acomodacion-dia-header">
+            <h3 class="subsection-title subsection-title--compact">Acomodación de hoy</h3>
+            <span class="acomodacion-dia-fecha muted">${escapeHtmlCal(fechaFmt)}</span>
+        </div>
+        <p class="acomodacion-dia-intro">
+            Huéspedes alojados hoy: total de la estadía y saldo pendiente de cada reserva.
+            El detalle completo sigue en la pestaña <strong>Reservas</strong>.
+        </p>
+        <div class="acomodacion-dia-chips">
+            <span class="ocupacion-chip chip-total"><span class="chip-label">Habitaciones</span><span class="chip-value">${lista.length}</span></span>
+            <span class="ocupacion-chip chip-disponible"><span class="chip-label">Total estadías</span><span class="chip-value">${escapeHtmlCal(formatoMoneda(sumTotal))}</span></span>
+            <span class="ocupacion-chip chip-ocupada"><span class="chip-label">Saldo pendiente</span><span class="chip-value">${escapeHtmlCal(formatoMoneda(sumSaldo))}</span></span>
+            <span class="ocupacion-chip chip-porcentaje"><span class="chip-label">Abonado</span><span class="chip-value">${escapeHtmlCal(formatoMoneda(sumAbonado))}</span></span>
+        </div>
+        <div class="table-container acomodacion-dia-tabla-wrap">
+            <table class="data-table acomodacion-dia-tabla">
+                <thead>
+                    <tr>
+                        <th>Habitación</th>
+                        <th>Huésped</th>
+                        <th>Personas</th>
+                        <th>Salida</th>
+                        <th>Tarifa / noche</th>
+                        <th>Total a cobrar</th>
+                        <th>Abonado</th>
+                        <th>Debe</th>
+                        <th>Cobro</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+                <tfoot>
+                    <tr class="acomodacion-dia-total-fila">
+                        <td colspan="5"><strong>Total del día (${lista.length} habitación${lista.length === 1 ? '' : 'es'})</strong></td>
+                        <td><strong>${escapeHtmlCal(formatoMoneda(sumTotal))}</strong></td>
+                        <td><strong>${escapeHtmlCal(formatoMoneda(sumAbonado))}</strong></td>
+                        <td><strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(sumSaldo))}</strong></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+}
+
 function mostrarHabitaciones() {
     const grid = document.getElementById('gridHabitaciones');
     const tbody = document.getElementById('tablaHabitacionesInv');
 
     actualizarResumenOcupacion();
+    renderAcomodacionDelDia();
     refrescarPanelesOcupacionDual();
     renderIndicadoresDashboard();
     renderIndicadoresFinanciero();
@@ -3063,7 +3404,7 @@ function mostrarHabitaciones() {
     const vacioGrid =
         '<p style="text-align: center; color: #666; padding: 40px;">No hay habitaciones registradas. Crea una nueva habitación para comenzar.</p>';
     const vacioTabla =
-        '<tr><td colspan="7" style="text-align: center; padding: 24px; color: #666;">No hay habitaciones registradas.</td></tr>';
+        '<tr><td colspan="8" style="text-align: center; padding: 24px; color: #666;">No hay habitaciones registradas.</td></tr>';
 
     if (habitaciones.length === 0) {
         if (grid) grid.innerHTML = vacioGrid;
@@ -3074,7 +3415,7 @@ function mostrarHabitaciones() {
     const listaHabitaciones = habitacionesFiltradas();
     if (listaHabitaciones.length === 0) {
         if (grid) grid.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">Sin resultados para la búsqueda actual.</p>';
-        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 24px; color: #666;">Sin resultados para la búsqueda actual.</td></tr>';
         return;
     }
 
@@ -3092,7 +3433,8 @@ function mostrarHabitaciones() {
                 <td>${escapeHtmlCal(habitacion.piso || '-')}</td>
                 <td>${escapeHtmlCal(String(habitacion.capacidad_personas || 1))} pers.</td>
                 <td>${escapeHtmlCal(String(habitacion.total_camas ?? 0))}</td>
-                <td class="td-estado-inventario">${htmlEstadoHabitacionInventario(habitacion)}</td>
+                <td class="td-estado-inventario">${htmlEstadoInventarioHabitacionCompleto(habitacion)}</td>
+                <td class="td-huesped-habitacion">${htmlCeldaHuespedHabitacion(habitacion)}</td>
                 <td class="td-acciones-inventario">
                     <button type="button" class="btn-secondary btn-small" onclick="mostrarModalEditarHabitacion(${habitacion.id})">✏️ Modificar</button>
                     <button type="button" class="btn-primary btn-small" onclick="gestionarCamas(${habitacion.id}, ${etiquetaJson})">🛏️ Camas</button>
@@ -3119,6 +3461,7 @@ function mostrarHabitaciones() {
                 <div class="habitacion-numero">${escapeHtmlCal(habitacion.codigo || `Habitación ${habitacion.numero}`)}</div>
                 ${htmlEstadoHabitacionInventario(habitacion)}
             </div>
+            ${htmlDetalleOcupacionHabitacion(habitacion)}
             <div class="habitacion-info">
                 <p><strong>Número:</strong> ${escapeHtmlCal(habitacion.numero)}</p>
                 <p><strong>Nombre:</strong> ${escapeHtmlCal(habitacion.nombre || '-')}</p>
@@ -4036,6 +4379,8 @@ async function cargarReservas() {
         const response = await fetchWithAuth(`${API_URL}/reservas`);
         reservas = await response.json();
         mostrarReservas('tablaReservas');
+        renderAcomodacionDelDia();
+        mostrarHabitaciones();
         actualizarSelectsReserva();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
@@ -4066,7 +4411,7 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
         const row = document.createElement('tr');
         const fechaIngreso = new Date(reserva.fecha_ingreso).toLocaleDateString('es-ES');
         const fechaSalida = new Date(reserva.fecha_salida).toLocaleDateString('es-ES');
-        const estadoClass = reserva.estado === 'Activa' ? 'estado-disponible' : 'estado-ocupada';
+        const estadoClass = claseEstadoReservaHabitacion(reserva.estado);
         
         row.innerHTML = `
             <td>${reserva.id}</td>
@@ -4077,7 +4422,7 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
             <td>${reserva.metodo_pago || '-'}</td>
             <td>${fechaIngreso}</td>
             <td>${fechaSalida}</td>
-            <td><span class="estado-badge ${estadoClass}">${reserva.estado}</span></td>
+            <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(reserva.estado)}</span></td>
             <td>${escapeHtmlCal(formatoMoneda(Number(reserva.habitacion_precio_diario) || 0))}</td>
             <td>${textoValorReservaHabitacion(reserva)}</td>
             <td>${htmlCeldaPagoReserva(reserva, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
@@ -4319,6 +4664,29 @@ async function guardarReserva(event) {
         }
     } catch (error) {
         alert(idEdicion ? 'Error al actualizar la reserva' : 'Error al crear la reserva');
+        console.error(error);
+    }
+}
+
+async function confirmarCheckinReserva(id) {
+    if (!confirm('¿Desea confirmar la llegada del huésped?')) {
+        return;
+    }
+    try {
+        const response = await fetchWithAuth(`${API_URL}/reservas/${id}/checkin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+            await cargarReservas();
+            cargarHabitaciones();
+            actualizarCalendarioDisponibilidad();
+        } else {
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo registrar el check-in.');
+            alert('Error: ' + msg);
+        }
+    } catch (error) {
+        alert('Error al registrar el check-in');
         console.error(error);
     }
 }
@@ -4811,6 +5179,7 @@ async function confirmarAbonoReserva(event) {
                 cargarReservasChinchorros();
             } else {
                 cargarReservas();
+                cargarHabitaciones();
             }
             renderIndicadoresFinanciero();
             const nuevoAbonado = data.monto_abonado != null ? formatoMoneda(data.monto_abonado) : '';
@@ -4859,6 +5228,7 @@ async function totalizarReservaPago(tipo, id) {
                 cargarReservasChinchorros();
             } else {
                 cargarReservas();
+                cargarHabitaciones();
             }
             renderIndicadoresFinanciero();
             alert('Reserva totalizada correctamente.');

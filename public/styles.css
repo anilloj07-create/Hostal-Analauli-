@@ -747,6 +747,36 @@ body::before {
     background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
 }
 
+.cal-swatch.cal-pendiente-checkin {
+    background: #fff9c4;
+    border: 1px solid #fff176;
+}
+
+.cal-cell.cal-pendiente-checkin {
+    background: #fffde7;
+    color: #f57f17;
+    position: relative;
+}
+
+.cal-cell.cal-pendiente-checkin[data-huesped]:hover::after,
+.cal-cell.cal-pendiente-checkin[data-huesped]:focus-visible::after {
+    content: attr(data-huesped);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    background: #5d4e00;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 30;
+    pointer-events: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+
 .cal-swatch.cal-ocupado {
     background: linear-gradient(135deg, #ffcdd2 0%, #ef9a9a 100%);
 }
@@ -880,6 +910,29 @@ body::before {
 .cal-cell.cal-ocupado {
     background: #ffebee;
     color: #c62828;
+    position: relative;
+}
+
+.cal-cell.cal-ocupado[data-huesped]:hover::after,
+.cal-cell.cal-ocupado[data-huesped]:focus-visible::after {
+    content: attr(data-huesped);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    background: #5d2e0c;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 30;
+    pointer-events: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .cal-cell.cal-no-reservable {
@@ -1278,6 +1331,28 @@ body::before {
     display: inline-block;
     cursor: help;
     user-select: none;
+}
+
+.estado-inline {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 0.85em;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.hab-linea-estado {
+    width: 100%;
+    margin-bottom: 6px !important;
+}
+
+.hab-ocupacion-estado-linea {
+    margin: 0 0 6px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
 }
 
 .td-estado-inventario {
@@ -1860,6 +1935,157 @@ body::before {
     flex: 1;
     min-width: 150px;
     margin-bottom: 0;
+}
+
+.acomodacion-dia-panel {
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    border: 1px solid #ffe5d9;
+    background: linear-gradient(180deg, #fffaf7 0%, #fff5f0 100%);
+    box-shadow: 0 2px 10px rgba(139, 69, 19, 0.06);
+}
+
+.acomodacion-dia-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 6px;
+}
+
+.acomodacion-dia-fecha {
+    font-size: 0.92rem;
+    text-transform: capitalize;
+}
+
+.acomodacion-dia-intro {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.acomodacion-dia-vacio {
+    margin: 8px 0 0;
+    text-align: center;
+    color: #666;
+    padding: 12px;
+}
+
+.acomodacion-dia-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.acomodacion-dia-tabla-wrap {
+    margin: 0;
+    overflow-x: auto;
+}
+
+.acomodacion-dia-tabla th,
+.acomodacion-dia-tabla td {
+    white-space: nowrap;
+}
+
+.acomodacion-dia-tabla td:nth-child(2),
+.acomodacion-dia-tabla td:nth-child(3) {
+    white-space: normal;
+    min-width: 120px;
+}
+
+.acomodacion-dia-total-fila td {
+    background: #fff0e8;
+    border-top: 2px solid #ffd4b3;
+}
+
+.acomodacion-dia-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.td-acciones-acomodacion-dia {
+    min-width: 150px;
+}
+
+.hab-estado-inventario-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 140px;
+}
+
+.hab-ocupacion-detalle {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fff5f0;
+    border: 1px solid #ffe5d9;
+    font-size: 0.88rem;
+    line-height: 1.35;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.habitacion-card .hab-ocupacion-detalle {
+    margin: 0 0 10px;
+}
+
+.hab-ocupacion-huesped,
+.hab-ocupacion-pago {
+    margin: 0;
+}
+
+.hab-ocupacion-pago {
+    margin-top: 4px;
+}
+
+.hab-ocupacion-label {
+    font-weight: 600;
+    color: #8b4513;
+}
+
+.estado-badge--ocupada {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+    max-width: 100%;
+}
+
+.hab-estado-huesped-nombre {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    opacity: 0.95;
+    max-width: 160px;
+    white-space: normal;
+}
+
+.hab-huesped-ocupando {
+    color: #8b4513;
+    font-size: 1rem;
+}
+
+.hab-huesped-nombre {
+    color: #5d2e0c;
+}
+
+.td-huesped-habitacion {
+    min-width: 120px;
+    max-width: 180px;
+    white-space: normal;
+}
+
+.hab-ocupacion-saldo--ok {
+    color: #2e7d32;
+    font-weight: 500;
 }
 
 .habitacion-camas-nueva {

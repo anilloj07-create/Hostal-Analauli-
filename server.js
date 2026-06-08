@@ -820,11 +820,11 @@ function generarIdentificadoresChinchorro(nombre, callback) {
 
 // ========== INVENTARIO (sincronización con reservas) ==========
 app.post('/api/inventario/sincronizar-estados', requireAuth, (req, res) => {
-  db.sincronizarTodosEstadosInventario((err) => {
+  db.procesarEstadosCheckinReservas((err) => {
     if (err) {
       res.status(500).json({ error: err.message });
     } else {
-      res.json({ message: 'Estados de habitaciones y chinchorros sincronizados con reservas activas' });
+      res.json({ message: 'Check-in, no show y estados de inventario actualizados' });
     }
   });
 });
@@ -1347,12 +1347,17 @@ app.post('/api/comprobantes/reserva', requireAuth, (req, res) => {
 
 // ========== RUTAS DE RESERVAS ==========
 app.get('/api/reservas', requireAuth, (req, res) => {
-  db.getAllReservas((err, reservas) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.json(reservas);
+  db.procesarEstadosCheckinReservas((errProc) => {
+    if (errProc) {
+      return res.status(500).json({ error: errProc.message });
     }
+    db.getAllReservas((err, reservas) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json(reservas);
+      }
+    });
   });
 });
 
@@ -1476,10 +1481,35 @@ app.put('/api/reservas/:id', requireAuth, (req, res) => {
   );
 });
 
+app.post('/api/reservas/:id/checkin', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  db.confirmarCheckinReserva(id, (err, reserva) => {
+    if (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
+      if (msg.includes('check-in') || msg.includes('No se puede')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'Check-in registrado', reserva });
+  });
+});
+
 app.put('/api/reservas/:id/estado', requireAuth, (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
-  if (!estado || !['Activa', 'Cancelada', 'Finalizada'].includes(estado)) {
+  const estadosValidos = [
+    'Activa',
+    'Pendiente de Check-in',
+    'No Presentado (No Show)',
+    'Cancelada',
+    'Finalizada'
+  ];
+  if (!estado || !estadosValidos.includes(estado)) {
     return res.status(400).json({ error: 'Estado inválido' });
   }
   db.updateReservaEstado(id, estado, (err) => {
@@ -1847,4 +1877,7 @@ app.listen(PORT, () => {
     console.log(`Datos persistentes (disco Render): ${process.env.DATA_DIR}`);
   }
   console.log('API: GET /api/status | GET /api/hotel/nombre | PUT /api/hotel/tema');
+  db.procesarEstadosCheckinReservas((err) => {
+    if (err) console.error('Check-in / no show al iniciar:', err.message);
+  });
 });

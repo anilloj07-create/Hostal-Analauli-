@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=34">
+    <link rel="stylesheet" href="styles.css?v=40">
 </head>
 <body>
     <div class="container">
@@ -49,6 +49,8 @@
 
             <div id="resumenOcupacion" class="ocupacion-panel" aria-live="polite"></div>
 
+            <div id="panelAcomodacionDia" class="acomodacion-dia-panel" aria-live="polite"></div>
+
             <div class="inventario-vista-wrap" id="wrapVistaHabitaciones">
                 <div class="grid-habitaciones" id="gridHabitaciones"></div>
                 <div id="wrapTablaHabitaciones" class="table-container tabla-inventario-wrap tabla-inventario-oculta" aria-hidden="true">
@@ -61,6 +63,7 @@
                                 <th>Acomodación</th>
                                 <th>Camas</th>
                                 <th>Estado</th>
+                                <th>Huésped</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -122,7 +125,7 @@
                     placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                     oninput="actualizarFiltroModulo('reservas', this.value)">
             </div>
-            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En ambas tablas puede registrar <strong>abonos</strong>, <strong>totalizar</strong> el pago, <strong>imprimir factura</strong>, <strong>enviar a la DIAN</strong> (CUFE y QR) y ver columnas Total, Abonado y Saldo.</p>
+            <p class="section-intro">Listado unificado de reservas de habitaciones y de chinchorros. En habitaciones, el día de ingreso la reserva queda <strong>Pendiente de Check-in</strong> hasta confirmar la llegada con el botón <strong>✅ Check-in</strong>; si no llega, pasa a <strong>No Presentado (No Show)</strong> y libera la habitación. También puede registrar <strong>abonos</strong>, <strong>totalizar</strong>, <strong>imprimir factura</strong> y <strong>enviar a la DIAN</strong>.</p>
 
             <h3 class="subsection-title">Reservas de habitaciones</h3>
             <div class="table-container">
@@ -264,7 +267,8 @@
             <p class="section-intro">Vista mensual según <strong>reservas activas</strong>. <strong>Clic en celda verde (+)</strong> para reservar. Gris (—) = en limpieza o fuera de servicio (no reservable). Rojo = ocupado (clic para ver la reserva).</p>
             <div class="cal-leyenda" aria-hidden="true">
                 <span class="cal-ley-item"><span class="cal-swatch cal-libre"></span> Disponible — clic para reservar</span>
-                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado — clic para consultar</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado (con check-in)</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-pendiente-checkin"></span> Pendiente de check-in</span>
                 <span class="cal-ley-item"><span class="cal-swatch cal-no-reservable"></span> Limpieza / fuera de servicio</span>
             </div>
             <div class="cal-nav">
@@ -1104,6 +1108,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=44"></script>
+    <script src="app.js?v=52"></script>
 </body>
 </html>
