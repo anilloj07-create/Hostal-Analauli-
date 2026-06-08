@@ -270,6 +270,11 @@ function initDatabase() {
         console.error('Migración checkin_at reservas:', e.message);
       }
     });
+    db.run('ALTER TABLE reservas ADD COLUMN confirmacion_usuario TEXT', (e) => {
+      if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
+        console.error('Migración confirmacion_usuario reservas:', e.message);
+      }
+    });
 
     // Chinchorros (alquiler)
     db.run(`CREATE TABLE IF NOT EXISTS chinchorros (
@@ -623,7 +628,7 @@ function getAllHabitaciones(callback) {
       (SELECT COUNT(*) FROM camas c WHERE c.habitacion_id = h.id) AS total_camas,
       (SELECT COUNT(*) FROM reservas r
         WHERE r.habitacion_id = h.id
-          AND r.estado = 'Activa'
+          AND r.estado IN ('Confirmada', 'Activa')
           AND r.checkin_at IS NOT NULL
           AND DATE('now') BETWEEN r.fecha_ingreso AND r.fecha_salida) AS reservas_ocupadas_hoy,
       (SELECT COUNT(*) FROM reservas r
@@ -934,12 +939,17 @@ function getAllReservas(callback) {
 }
 
 const ESTADO_RESERVA_ACTIVA = 'Activa';
+const ESTADO_RESERVA_CONFIRMADA = 'Confirmada';
 const ESTADO_RESERVA_PENDIENTE_CHECKIN = 'Pendiente de Check-in';
 const ESTADO_RESERVA_NO_SHOW = 'No Presentado (No Show)';
-const ESTADOS_RESERVA_BLOQUEAN_HABITACION = [ESTADO_RESERVA_ACTIVA, ESTADO_RESERVA_PENDIENTE_CHECKIN];
+const ESTADOS_RESERVA_BLOQUEAN_HABITACION = [
+  ESTADO_RESERVA_ACTIVA,
+  ESTADO_RESERVA_PENDIENTE_CHECKIN,
+  ESTADO_RESERVA_CONFIRMADA
+];
 
 function sqlEstadosReservaBloqueanHabitacion() {
-  return "'Activa', 'Pendiente de Check-in'";
+  return "'Activa', 'Pendiente de Check-in', 'Confirmada'";
 }
 
 function fechaHoyYMD() {
@@ -957,11 +967,23 @@ function getReservaById(id, callback) {
 }
 
 function ensureCheckinAtColumn(callback) {
-  db.run('ALTER TABLE reservas ADD COLUMN checkin_at DATETIME', (e) => {
-    if (e && !String(e.message).toLowerCase().includes('duplicate column')) {
-      return callback(e);
-    }
-    callback(null);
+  db.serialize(() => {
+    db.run('ALTER TABLE reservas ADD COLUMN checkin_at DATETIME', (e1) => {
+      if (e1 && !String(e1.message).toLowerCase().includes('duplicate column')) {
+        return callback(e1);
+      }
+      db.run('ALTER TABLE reservas ADD COLUMN confirmacion_usuario TEXT', (e2) => {
+        if (e2 && !String(e2.message).toLowerCase().includes('duplicate column')) {
+          return callback(e2);
+        }
+        db.run(
+          `UPDATE reservas SET estado = ?
+           WHERE estado = ? AND checkin_at IS NOT NULL`,
+          [ESTADO_RESERVA_CONFIRMADA, ESTADO_RESERVA_ACTIVA],
+          () => callback(null)
+        );
+      });
+    });
   });
 }
 
@@ -973,18 +995,6 @@ function procesarEstadosCheckinReservas(callback) {
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
     db.run(
-      `UPDATE reservas SET checkin_at = datetime('now'), estado = ?
-       WHERE checkin_at IS NULL
-         AND estado IN (?, ?)
-         AND DATE('now') > DATE(fecha_ingreso)
-         AND DATE('now') <= DATE(fecha_salida)`,
-      [ESTADO_RESERVA_ACTIVA, ESTADO_RESERVA_ACTIVA, ESTADO_RESERVA_PENDIENTE_CHECKIN],
-      (e0) => {
-        if (e0) {
-          db.run('ROLLBACK');
-          return cb(e0);
-        }
-        db.run(
       `UPDATE reservas SET estado = ?
        WHERE estado IN (?, ?)
          AND checkin_at IS NULL
@@ -1014,31 +1024,39 @@ function procesarEstadosCheckinReservas(callback) {
         );
       }
     );
-      }
-    );
   });
   });
 }
 
-function confirmarCheckinReserva(id, callback) {
+function confirmarCheckinReserva(id, usuario, callback) {
+  if (typeof usuario === 'function') {
+    callback = usuario;
+    usuario = null;
+  }
+  const usuarioResponsable = usuario != null ? String(usuario).trim() : '';
   getReservaById(id, (err, r) => {
     if (err) return callback(err);
     if (!r) return callback(new Error('Reserva no encontrada'));
     const est = String(r.estado || '');
     if (est === ESTADO_RESERVA_NO_SHOW || est === 'Cancelada' || est === 'Finalizada') {
-      return callback(new Error('No se puede registrar check-in en esta reserva'));
+      return callback(new Error('No se puede confirmar esta reserva'));
+    }
+    if (est === ESTADO_RESERVA_CONFIRMADA) {
+      return callback(new Error('La reserva ya está confirmada'));
     }
     if (est !== ESTADO_RESERVA_PENDIENTE_CHECKIN) {
       if (!(est === ESTADO_RESERVA_ACTIVA && !r.checkin_at && String(r.fecha_ingreso).slice(0, 10) <= fechaHoyYMD())) {
-        return callback(new Error('La reserva no está pendiente de check-in'));
+        return callback(new Error('La reserva no está pendiente de confirmación'));
       }
     }
     if (String(r.fecha_ingreso).slice(0, 10) > fechaHoyYMD()) {
-      return callback(new Error('El check-in solo está disponible desde la fecha de ingreso'));
+      return callback(new Error('La confirmación solo está disponible desde la fecha de ingreso'));
     }
     db.run(
-      `UPDATE reservas SET estado = ?, checkin_at = datetime('now') WHERE id = ?`,
-      [ESTADO_RESERVA_ACTIVA, id],
+      `UPDATE reservas
+       SET estado = ?, checkin_at = datetime('now'), confirmacion_usuario = ?
+       WHERE id = ?`,
+      [ESTADO_RESERVA_CONFIRMADA, usuarioResponsable || null, id],
       (runErr) => {
         if (runErr) return callback(runErr);
         sincronizarEstadoHabitacionConReservas(r.habitacion_id, (syncErr) => {
@@ -1074,7 +1092,7 @@ function sincronizarEstadoHabitacionConReservas(habitacion_id, callback) {
       `
         SELECT
           SUM(CASE
-            WHEN estado = 'Activa' AND checkin_at IS NOT NULL
+            WHEN estado IN ('Confirmada', 'Activa') AND checkin_at IS NOT NULL
               AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida THEN 1
             ELSE 0
           END) as cnt_hoy,

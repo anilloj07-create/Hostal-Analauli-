@@ -1486,16 +1486,23 @@ app.post('/api/reservas/:id/checkin', requireAuth, (req, res) => {
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
-  db.confirmarCheckinReserva(id, (err, reserva) => {
+  const usuario = req.session.username || req.session.nombre || 'usuario';
+  db.confirmarCheckinReserva(id, usuario, (err, reserva) => {
     if (err) {
       const msg = String(err.message || '');
       if (msg.includes('no encontrada')) return res.status(404).json({ error: err.message });
-      if (msg.includes('check-in') || msg.includes('No se puede')) {
+      if (
+        msg.includes('confirmar') ||
+        msg.includes('confirmación') ||
+        msg.includes('check-in') ||
+        msg.includes('No se puede') ||
+        msg.includes('ya está confirmada')
+      ) {
         return res.status(400).json({ error: err.message });
       }
       return res.status(500).json({ error: err.message });
     }
-    res.json({ message: 'Check-in registrado', reserva });
+    res.json({ message: 'Reserva confirmada', reserva });
   });
 });
 
@@ -1504,6 +1511,7 @@ app.put('/api/reservas/:id/estado', requireAuth, (req, res) => {
   const { estado } = req.body;
   const estadosValidos = [
     'Activa',
+    'Confirmada',
     'Pendiente de Check-in',
     'No Presentado (No Show)',
     'Cancelada',

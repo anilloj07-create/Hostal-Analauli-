@@ -128,7 +128,7 @@
                             placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                             oninput="actualizarFiltroModulo('reservas', this.value)">
                     </div>
-                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas de habitaciones y chinchorros. Use <strong>✅ Check-in</strong>, <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
+                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas. Use <strong>Confirmar Reserva</strong> al entregar la habitación al huésped, y <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
 
                     <h3 class="subsection-title">Registro de reservas</h3>
                     <div class="table-container reservas-tabla-unificada-wrap">
@@ -258,6 +258,7 @@
                     <select id="filtroEstadoConsolidado" class="select-filtro-gestion" onchange="renderListadoConsolidadoReservas()">
                         <option value="">Todos los estados</option>
                         <option value="Activa">Activa</option>
+                        <option value="Confirmada">Confirmada</option>
                         <option value="Pendiente de Check-in">Pendiente de Check-in</option>
                         <option value="No Presentado (No Show)">No Presentado (No Show)</option>
                         <option value="Finalizada">Finalizada</option>
@@ -312,8 +313,8 @@
             <p class="section-intro">Vista mensual según <strong>reservas activas</strong>. <strong>Clic en celda verde (+)</strong> para reservar. Gris (—) = en limpieza o fuera de servicio (no reservable). Rojo = ocupado (clic para ver la reserva).</p>
             <div class="cal-leyenda" aria-hidden="true">
                 <span class="cal-ley-item"><span class="cal-swatch cal-libre"></span> Disponible — clic para reservar</span>
-                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado (con check-in)</span>
-                <span class="cal-ley-item"><span class="cal-swatch cal-pendiente-checkin"></span> Pendiente de check-in</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-ocupado"></span> Ocupado (reserva confirmada)</span>
+                <span class="cal-ley-item"><span class="cal-swatch cal-pendiente-checkin"></span> Pendiente de confirmar</span>
                 <span class="cal-ley-item"><span class="cal-swatch cal-no-reservable"></span> Limpieza / fuera de servicio</span>
             </div>
             <div class="cal-nav">
@@ -1152,11 +1153,11 @@
         </div>
     </div>
 
-    <!-- Modal confirmar llegada (check-in) -->
+    <!-- Modal confirmar reserva -->
     <div id="modalConfirmarCheckin" class="modal">
         <div class="modal-content modal-confirm-checkin">
-            <h2>Confirmar llegada</h2>
-            <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Desea confirmar la llegada del huésped?</p>
+            <h2>Confirmar reserva</h2>
+            <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Está seguro de que desea confirmar esta reserva?</p>
             <div class="modal-actions modal-actions-confirm-sino">
                 <button type="button" class="btn-primary btn-confirm-si" onclick="responderConfirmarCheckin(true)">Sí</button>
                 <button type="button" class="btn-secondary btn-confirm-no" onclick="responderConfirmarCheckin(false)">No</button>
@@ -1165,6 +1166,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=57"></script>
+    <script src="app.js?v=58"></script>
 </body>
 </html>

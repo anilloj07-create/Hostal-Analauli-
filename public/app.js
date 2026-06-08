@@ -424,7 +424,7 @@ function renderTablaReservasUnificada() {
                     <td>${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}</td>
                     <td>${fechaIngreso}</td>
                     <td>${fechaSalida}</td>
-                    <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(r.estado)}</span></td>
+                    <td>${htmlEstadoReservaHabitacion(r)}</td>
                     <td>${escapeHtmlCal(formatoMoneda(Number(r.habitacion_precio_diario) || 0))} <span class="muted">/noche</span></td>
                     <td>${textoValorReservaHabitacion(r)}</td>
                     <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
@@ -1064,15 +1064,19 @@ async function enviarFacturaDianReserva(tipo, id) {
 function htmlAccionesReservaHabitacion(reserva) {
     const id = Number(reserva.id);
     const activa = reserva.estado === 'Activa';
+    const confirmada = reserva.estado === 'Confirmada';
     const pendienteCheckin = reservaPendienteCheckin(reserva);
-    const puedeGestionar = activa || pendienteCheckin;
+    const puedeGestionar = activa || confirmada || pendienteCheckin;
+    const puedeConfirmarReserva =
+        pendienteCheckin ||
+        (activa && !reservaEstaConCheckin(reserva) && ymdReservaIngreso(reserva) <= fechaLocalYMD());
     return `
         <td class="td-acciones-reserva">
             <div class="reserva-acciones">
                 <div class="reserva-acciones-grupo">
                     ${
-                        pendienteCheckin
-                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="confirmarCheckinReserva(${id})" title="Confirmar llegada del huésped">✅ Check-in</button>`
+                        puedeConfirmarReserva
+                            ? `<button type="button" class="btn-primary btn-small btn-reserva" onclick="confirmarReservaHuesped(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`
                             : ''
                     }
                     <button type="button" class="btn-secondary btn-small btn-reserva" onclick="modificarReserva(${id})" title="Modificar reserva">✏️ Modificar</button>
@@ -1133,7 +1137,7 @@ function sumarValoresReservas(lista, fnValor) {
 function calcularResumenFinancieroReservas() {
     const habNoCancel = reservas.filter((r) => r.estado !== 'Cancelada');
     const chinNoCancel = reservasChinchorros.filter((r) => r.estado !== 'Cancelada');
-    const habActivas = reservas.filter((r) => r.estado === 'Activa');
+    const habActivas = reservas.filter((r) => reservaEsActivaOperativa(r));
     const chinActivas = reservasChinchorros.filter((r) => r.estado === 'Activa');
 
     const ingresosHab = sumarValoresReservas(habNoCancel, valorMonetarioReservaHabitacion);
@@ -1195,6 +1199,9 @@ function reservaActivaEnFecha(r, ymd) {
     if (!ymdEnRangoReserva(ymd, ymdReservaIngreso(r), ymdReservaSalida(r))) return false;
     if (reservaPendienteCheckin(r)) {
         return ymd === ymdReservaIngreso(r);
+    }
+    if (String(r.estado) === 'Confirmada') {
+        return reservaEstaConCheckin(r);
     }
     if (String(r.estado) === 'Activa') {
         if (reservaEstaConCheckin(r)) return true;
@@ -1396,7 +1403,7 @@ function renderDashboardKpis() {
     const diasMes = listarDiasEntreYMD(primero, hoy > ultimo ? ultimo : hoy);
 
     const reservasActivas =
-        reservas.filter((r) => r.estado === 'Activa').length +
+        reservas.filter((r) => reservaEsActivaOperativa(r)).length +
         reservasChinchorros.filter((r) => r.estado === 'Activa').length;
     const clientesTotales = huespedes.length;
 
@@ -1534,7 +1541,7 @@ function renderIndicadoresFinanciero() {
 
 function reservaEsActivaOperativa(r) {
     const est = String(r.estado || '');
-    return est === 'Activa' || est === 'Pendiente de Check-in';
+    return est === 'Activa' || est === 'Confirmada' || est === 'Pendiente de Check-in';
 }
 
 function reservasHabitacionAlojadasEnFecha(ymd) {
@@ -2037,7 +2044,9 @@ function actualizarAlertasSalidasHoy() {
         return;
     }
     const salidasHab = reservas.filter(
-        (r) => r.estado === 'Activa' && String(r.fecha_salida).slice(0, 10) === hoy
+        (r) =>
+            (r.estado === 'Confirmada' || (r.estado === 'Activa' && reservaEstaConCheckin(r))) &&
+            String(r.fecha_salida).slice(0, 10) === hoy
     );
     const salidasChin = reservasChinchorros.filter(
         (r) => r.estado === 'Activa' && String(r.fecha_salida).slice(0, 10) === hoy
@@ -3084,7 +3093,9 @@ function habitacionConReservaActivaHoy(hab) {
 }
 
 function reservaEstaConCheckin(r) {
-    return r && String(r.estado) === 'Activa' && r.checkin_at != null && String(r.checkin_at).trim() !== '';
+    if (!r || r.checkin_at == null || String(r.checkin_at).trim() === '') return false;
+    const est = String(r.estado || '');
+    return est === 'Confirmada' || est === 'Activa';
 }
 
 function reservaPendienteCheckin(r) {
@@ -3097,16 +3108,31 @@ function reservaEsNoShow(r) {
 
 function reservaBloqueaHabitacion(r) {
     const est = r && r.estado ? String(r.estado) : '';
-    return est === 'Activa' || est === 'Pendiente de Check-in';
+    return est === 'Activa' || est === 'Confirmada' || est === 'Pendiente de Check-in';
 }
 
 function claseEstadoReservaHabitacion(estado) {
     const e = String(estado || '');
     if (e === 'Activa') return 'estado-disponible';
+    if (e === 'Confirmada') return 'estado-disponible';
     if (e === 'Pendiente de Check-in') return 'estado-reservada';
     if (e === 'No Presentado (No Show)') return 'estado-fuera-de-servicio';
     if (e === 'Finalizada') return 'estado-en-limpieza';
     return 'estado-ocupada';
+}
+
+function textoTrazabilidadConfirmacionReserva(r) {
+    if (!r || String(r.estado) !== 'Confirmada' || !r.checkin_at) return '';
+    const fecha = new Date(r.checkin_at).toLocaleString('es-ES');
+    const usuario = r.confirmacion_usuario ? String(r.confirmacion_usuario) : 'usuario no registrado';
+    return `Confirmada el ${fecha} por ${usuario}`;
+}
+
+function htmlEstadoReservaHabitacion(r) {
+    const clase = claseEstadoReservaHabitacion(r.estado);
+    const traza = textoTrazabilidadConfirmacionReserva(r);
+    const title = traza ? ` title="${escapeHtmlCal(traza)}"` : '';
+    return `<span class="estado-badge ${clase}"${title}>${escapeHtmlCal(r.estado)}</span>`;
 }
 
 function claseEstadoReservaChinchorro(estado) {
@@ -3778,7 +3804,7 @@ function renderIndicadoresOcupacion() {
     const totalOcupados = ocupadasHabitaciones + ocupadosChinchorros;
     const totalDisponibles = disponiblesHabitaciones + disponiblesChinchorros;
 
-    const reservasActivasHab = reservas.filter((r) => r.estado === 'Activa').length;
+    const reservasActivasHab = reservas.filter((r) => reservaEsActivaOperativa(r)).length;
     const reservasActivasChin = reservasChinchorros.filter((r) => r.estado === 'Activa').length;
     const reservasActivasTotal = reservasActivasHab + reservasActivasChin;
     const totalReservas = reservas.length + reservasChinchorros.length;
@@ -3835,10 +3861,13 @@ function textoPersonasReservaHabitacion(r) {
 
 function htmlAccionesAcomodacionDia(r) {
     const id = Number(r.id);
-    if (reservaPendienteCheckin(r)) {
+    const puedeConfirmar =
+        reservaPendienteCheckin(r) ||
+        (r.estado === 'Activa' && !reservaEstaConCheckin(r) && ymdReservaIngreso(r) <= fechaLocalYMD());
+    if (puedeConfirmar) {
         return `
         <div class="acomodacion-dia-acciones">
-            <button type="button" class="btn-primary btn-small" onclick="confirmarCheckinReserva(${id})" title="Confirmar llegada">✅ Check-in</button>
+            <button type="button" class="btn-primary btn-small" onclick="confirmarReservaHuesped(${id})" title="Confirmar entrega de la reserva">Confirmar Reserva</button>
         </div>`;
     }
     const saldo = saldoReservaHabitacion(r);
@@ -4985,8 +5014,6 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
         const row = document.createElement('tr');
         const fechaIngreso = new Date(reserva.fecha_ingreso).toLocaleDateString('es-ES');
         const fechaSalida = new Date(reserva.fecha_salida).toLocaleDateString('es-ES');
-        const estadoClass = claseEstadoReservaHabitacion(reserva.estado);
-        
         row.innerHTML = `
             <td>${reserva.id}</td>
             <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(reserva))}</strong></td>
@@ -4996,7 +5023,7 @@ function mostrarReservas(tbodyId = 'tablaReservas') {
             <td>${reserva.metodo_pago || '-'}</td>
             <td>${fechaIngreso}</td>
             <td>${fechaSalida}</td>
-            <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(reserva.estado)}</span></td>
+            <td>${htmlEstadoReservaHabitacion(reserva)}</td>
             <td>${escapeHtmlCal(formatoMoneda(Number(reserva.habitacion_precio_diario) || 0))}</td>
             <td>${textoValorReservaHabitacion(reserva)}</td>
             <td>${htmlCeldaPagoReserva(reserva, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
@@ -5244,13 +5271,13 @@ async function guardarReserva(event) {
 
 let confirmarCheckinResolver = null;
 
-function preguntarConfirmarLlegadaHuesped() {
+function preguntarConfirmarReservaHuesped() {
     return new Promise((resolve) => {
         confirmarCheckinResolver = resolve;
         const modal = document.getElementById('modalConfirmarCheckin');
         const texto = document.getElementById('textoModalConfirmarCheckin');
         if (texto) {
-            texto.textContent = '¿Desea confirmar la llegada del huésped?';
+            texto.textContent = '¿Está seguro de que desea confirmar esta reserva?';
         }
         if (modal) modal.classList.add('active');
     });
@@ -5265,8 +5292,8 @@ function responderConfirmarCheckin(si) {
     }
 }
 
-async function confirmarCheckinReserva(id) {
-    const confirmado = await preguntarConfirmarLlegadaHuesped();
+async function confirmarReservaHuesped(id) {
+    const confirmado = await preguntarConfirmarReservaHuesped();
     if (!confirmado) {
         return;
     }
@@ -5280,13 +5307,17 @@ async function confirmarCheckinReserva(id) {
             cargarHabitaciones();
             actualizarCalendarioDisponibilidad();
         } else {
-            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo registrar el check-in.');
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo confirmar la reserva.');
             alert('Error: ' + msg);
         }
     } catch (error) {
-        alert('Error al registrar el check-in');
+        alert('Error al confirmar la reserva');
         console.error(error);
     }
+}
+
+async function confirmarCheckinReserva(id) {
+    return confirmarReservaHuesped(id);
 }
 
 async function finalizarReservaSalida(id) {
