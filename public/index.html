@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=41">
+    <link rel="stylesheet" href="styles.css?v=42">
 </head>
 <body>
     <div class="container">
@@ -27,7 +27,7 @@
             <button type="button" class="tab-btn" onclick="mostrarSeccion('huespedes', this)">👤 Huéspedes</button>
             <button type="button" class="tab-btn" id="tabBtnReservas" onclick="mostrarSeccion('reservas', this)">📅 Reservas</button>
             <button type="button" class="tab-btn" id="tabBtnChinchorros" onclick="mostrarSeccion('chinchorros', this)">🛋️ Chinchorros</button>
-            <button type="button" class="tab-btn" onclick="mostrarSeccion('indicadores', this)">📊 Indicadores</button>
+            <button type="button" class="tab-btn" onclick="mostrarSeccion('gestion-operativa', this)">📋 Gestión Operativa</button>
             <button type="button" class="tab-btn" onclick="mostrarSeccion('calendario', this)">📆 Calendario</button>
             <button type="button" class="tab-btn" onclick="mostrarSeccion('configuracion', this)">⚙️ Configuración</button>
         </nav>
@@ -221,38 +221,107 @@
             </div>
         </section>
 
-        <!-- Sección Indicadores -->
-        <section id="seccion-indicadores" class="seccion">
+        <!-- Sección Gestión Operativa -->
+        <section id="seccion-gestion-operativa" class="seccion">
             <div class="section-header section-header-wrap">
-                <h2>Indicadores</h2>
-                <button type="button" class="btn-secondary" onclick="actualizarIndicadoresOcupacion()">🔄 Actualizar indicadores</button>
+                <h2>Gestión Operativa</h2>
+                <button type="button" class="btn-secondary" onclick="refrescarGestionOperativa()">🔄 Actualizar módulo</button>
             </div>
             <p class="section-intro">
-                Panel de control con ocupación, ingresos del mes, últimas reservas y estado financiero según las tarifas registradas.
+                Consulte la <strong>acomodación diaria</strong>, visualice la <strong>ocupación</strong> de habitaciones,
+                estime los <strong>ingresos de reservas activas</strong> y revise el <strong>listado consolidado</strong>
+                de reservas para apoyar la gestión operativa, comercial y financiera del establecimiento.
             </p>
 
-            <h3 class="subsection-title">📊 Indicadores de ocupación</h3>
-            <div id="dashboardKpiGrid" class="dash-kpi-grid" aria-live="polite"></div>
+            <div class="gestion-modulo-grid">
+                <article class="gestion-bloque" id="bloqueAcomodacionDiaria">
+                    <h3 class="subsection-title">🛏️ Acomodación diaria</h3>
+                    <div class="gestion-toolbar">
+                        <label class="gestion-fecha-label">
+                            Fecha de consulta
+                            <input type="date" id="fechaAcomodacionOperativa" class="input-fecha-gestion" onchange="renderAcomodacionOperativa()">
+                        </label>
+                        <button type="button" class="btn-secondary btn-small" onclick="consultarAcomodacionHoy()">Hoy</button>
+                    </div>
+                    <div id="panelAcomodacionOperativa" class="gestion-panel" aria-live="polite"></div>
+                </article>
 
-            <h3 class="subsection-title">🏨 Ingresos por habitación (mes actual)</h3>
-            <div id="ingresosPorHabitacionMes" class="dash-ingresos-grid" aria-live="polite"></div>
-
-            <h3 class="subsection-title">🛋️ Ingresos por chinchorros (mes actual)</h3>
-            <div id="ingresosPorChinchorroMes" class="dash-ingresos-grid" aria-live="polite"></div>
-
-            <div class="dash-bottom-row">
-                <div class="dash-bottom-col">
-                    <h3 class="subsection-title">📋 Últimas reservas</h3>
-                    <div id="ultimasReservasDash" class="dash-ultimas-reservas" aria-live="polite"></div>
-                </div>
-                <div class="dash-bottom-col">
-                    <h3 class="subsection-title">💰 Estado financiero</h3>
-                    <div id="indicadoresFinancieros" class="fin-estado-panel fin-estado-panel--compact" aria-live="polite"></div>
-                </div>
+                <article class="gestion-bloque" id="bloqueOcupacion">
+                    <h3 class="subsection-title">🏨 Ocupación de habitaciones</h3>
+                    <div id="panelOcupacionOperativa" class="gestion-panel" aria-live="polite"></div>
+                    <div id="gridOcupacionHabitaciones" class="gestion-ocupacion-grid" aria-live="polite"></div>
+                </article>
             </div>
 
-            <h3 class="subsection-title">Resumen rápido (barras)</h3>
-            <div class="dual-ocupacion" aria-label="Ocupación habitaciones y chinchorros">
+            <article class="gestion-bloque gestion-bloque--ancho">
+                <h3 class="subsection-title">💰 Ingresos estimados (reservas activas)</h3>
+                <div id="panelIngresosActivas" class="gestion-panel" aria-live="polite"></div>
+                <div id="dashboardKpiGrid" class="dash-kpi-grid gestion-kpi-grid" aria-live="polite"></div>
+                <div class="gestion-ingresos-recursos">
+                    <div class="gestion-ingresos-col">
+                        <h4 class="gestion-subtitulo">Por habitación (mes actual)</h4>
+                        <div id="ingresosPorHabitacionMes" class="dash-ingresos-grid" aria-live="polite"></div>
+                    </div>
+                    <div class="gestion-ingresos-col">
+                        <h4 class="gestion-subtitulo">Por chinchorro (mes actual)</h4>
+                        <div id="ingresosPorChinchorroMes" class="dash-ingresos-grid" aria-live="polite"></div>
+                    </div>
+                </div>
+                <div id="indicadoresFinancieros" class="fin-estado-panel fin-estado-panel--compact" aria-live="polite"></div>
+            </article>
+
+            <article class="gestion-bloque gestion-bloque--ancho">
+                <h3 class="subsection-title">📋 Listado consolidado de reservas</h3>
+                <div class="gestion-toolbar gestion-toolbar--filtros">
+                    <input
+                        type="search"
+                        id="buscarReservasConsolidado"
+                        class="input-busqueda-modulo"
+                        placeholder="Buscar por huésped, recurso, estado o método de pago..."
+                        oninput="renderListadoConsolidadoReservas()">
+                    <select id="filtroEstadoConsolidado" class="select-filtro-gestion" onchange="renderListadoConsolidadoReservas()">
+                        <option value="">Todos los estados</option>
+                        <option value="Activa">Activa</option>
+                        <option value="Pendiente de Check-in">Pendiente de Check-in</option>
+                        <option value="No Presentado (No Show)">No Presentado (No Show)</option>
+                        <option value="Finalizada">Finalizada</option>
+                        <option value="Cancelada">Cancelada</option>
+                    </select>
+                    <select id="filtroTipoConsolidado" class="select-filtro-gestion" onchange="renderListadoConsolidadoReservas()">
+                        <option value="">Habitaciones y chinchorros</option>
+                        <option value="habitacion">Solo habitaciones</option>
+                        <option value="chinchorro">Solo chinchorros</option>
+                    </select>
+                </div>
+                <p class="gestion-nota-listado">
+                    Vista unificada con datos operativos, comerciales y financieros: tarifa, total, abonos, saldo y estado de cada reserva.
+                </p>
+                <div class="table-container gestion-tabla-consolidada-wrap">
+                    <table class="data-table gestion-tabla-consolidada">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tipo</th>
+                                <th>Recurso</th>
+                                <th>Huésped</th>
+                                <th>Personas</th>
+                                <th>Ingreso</th>
+                                <th>Salida</th>
+                                <th>Estado</th>
+                                <th>Tarifa</th>
+                                <th>Total</th>
+                                <th>Abonado</th>
+                                <th>Saldo</th>
+                                <th>Método pago</th>
+                                <th>Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaReservasConsolidado"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <div class="dual-ocupacion gestion-dual-ocupacion" aria-label="Resumen ocupación habitaciones y chinchorros">
                 <div id="dualPanelHabitaciones" class="dual-ocupacion-slot"></div>
                 <div id="dualPanelChinchorros" class="dual-ocupacion-slot"></div>
             </div>
@@ -1004,7 +1073,7 @@
                         <option value="operador">Operador (acceso operativo del hotel)</option>
                         <option value="administrador">Administrador (acceso total)</option>
                     </select>
-                    <small class="form-hint">El rol <strong>Operador</strong> puede iniciar sesión y usar habitaciones, reservas, huéspedes, chinchorros e indicadores. No administra usuarios ni colores.</small>
+                    <small class="form-hint">El rol <strong>Operador</strong> puede iniciar sesión y usar habitaciones, reservas, huéspedes, chinchorros y gestión operativa. No administra usuarios ni colores.</small>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary">Crear</button>
@@ -1120,6 +1189,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=53"></script>
+    <script src="app.js?v=54"></script>
 </body>
 </html>

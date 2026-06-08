@@ -1447,6 +1447,496 @@ function renderIndicadoresFinanciero() {
     `;
 }
 
+function reservaEsActivaOperativa(r) {
+    const est = String(r.estado || '');
+    return est === 'Activa' || est === 'Pendiente de Check-in';
+}
+
+function reservasHabitacionAlojadasEnFecha(ymd) {
+    return reservas
+        .filter((r) => reservaOcupadaEnFecha(r, ymd) || reservaPendienteCheckinEnFecha(r, ymd))
+        .sort((a, b) =>
+            etiquetaHabitacionReserva(a).localeCompare(etiquetaHabitacionReserva(b), 'es', { sensitivity: 'base' })
+        );
+}
+
+function reservasChinchorroAlojadasEnFecha(ymd) {
+    return reservasChinchorros
+        .filter((r) => reservaActivaEnFecha(r, ymd))
+        .sort((a, b) =>
+            etiquetaChinchorroReserva(a).localeCompare(etiquetaChinchorroReserva(b), 'es', { sensitivity: 'base' })
+        );
+}
+
+function fechaAcomodacionOperativaActual() {
+    const input = document.getElementById('fechaAcomodacionOperativa');
+    if (input && input.value) return input.value;
+    return fechaLocalYMD();
+}
+
+function inicializarGestionOperativa() {
+    const input = document.getElementById('fechaAcomodacionOperativa');
+    if (input && !input.value) {
+        input.value = fechaLocalYMD();
+    }
+}
+
+function consultarAcomodacionHoy() {
+    const input = document.getElementById('fechaAcomodacionOperativa');
+    if (input) input.value = fechaLocalYMD();
+    renderAcomodacionOperativa();
+}
+
+function htmlFilaAcomodacionHabitacion(r) {
+    const total = valorMonetarioReservaHabitacion(r);
+    const saldo = saldoReservaHabitacion(r);
+    const abonado = Math.min(montoAbonadoReserva(r), total);
+    const salida = new Date(`${ymdReservaSalida(r)}T12:00:00`).toLocaleDateString('es-ES');
+    const noches = unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+    const tarifa = Number(r.habitacion_precio_diario) || 0;
+    const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || 'Huésped';
+    const estado = reservaPendienteCheckin(r) ? 'Pendiente check-in' : 'Alojado';
+    const saldoHtml =
+        saldo > 0.005
+            ? `<strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(saldo))}</strong>`
+            : '<span class="muted">—</span>';
+    return `
+        <tr>
+            <td>Habitación</td>
+            <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(r))}</strong></td>
+            <td>${escapeHtmlCal(huesped)}</td>
+            <td>${escapeHtmlCal(textoPersonasReservaHabitacion(r))}</td>
+            <td>${escapeHtmlCal(salida)}</td>
+            <td><span class="estado-badge ${reservaPendienteCheckin(r) ? 'estado-pendiente' : 'estado-ocupada'}">${estado}</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(tarifa))}</td>
+            <td><strong>${escapeHtmlCal(formatoMoneda(total))}</strong> <span class="muted">(${noches} noches)</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(abonado))}</td>
+            <td>${saldoHtml}</td>
+        </tr>`;
+}
+
+function htmlFilaAcomodacionChinchorro(r) {
+    const total = valorMonetarioReservaChinchorro(r);
+    const saldo = saldoReservaChinchorro(r);
+    const abonado = Math.min(montoAbonadoReserva(r), total);
+    const salida = new Date(`${ymdReservaSalida(r)}T12:00:00`).toLocaleDateString('es-ES');
+    const dias = unidadesEstadiaYMD(r.fecha_ingreso, r.fecha_salida);
+    const tarifa = Number(r.chinchorro_precio_diario) || 0;
+    const huesped = `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || 'Huésped';
+    const adultos = Number(r.adultos || 1);
+    const ninos = Number(r.ninos || 0);
+    const saldoHtml =
+        saldo > 0.005
+            ? `<strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(saldo))}</strong>`
+            : '<span class="muted">—</span>';
+    return `
+        <tr>
+            <td>Chinchorro</td>
+            <td><strong>${escapeHtmlCal(etiquetaChinchorroReserva(r))}</strong></td>
+            <td>${escapeHtmlCal(huesped)}</td>
+            <td>${adultos} adulto(s)${ninos > 0 ? `, ${ninos} niño(s)` : ''}</td>
+            <td>${escapeHtmlCal(salida)}</td>
+            <td><span class="estado-badge estado-ocupada">En uso</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(tarifa))}</td>
+            <td><strong>${escapeHtmlCal(formatoMoneda(total))}</strong> <span class="muted">(${dias} días)</span></td>
+            <td>${escapeHtmlCal(formatoMoneda(abonado))}</td>
+            <td>${saldoHtml}</td>
+        </tr>`;
+}
+
+function renderAcomodacionOperativa() {
+    const panel = document.getElementById('panelAcomodacionOperativa');
+    if (!panel) return;
+
+    const ymd = fechaAcomodacionOperativaActual();
+    const listaHab = reservasHabitacionAlojadasEnFecha(ymd);
+    const listaChin = reservasChinchorroAlojadasEnFecha(ymd);
+    const fechaFmt = new Date(`${ymd}T12:00:00`).toLocaleDateString('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    if (listaHab.length === 0 && listaChin.length === 0) {
+        panel.innerHTML = `
+            <p class="gestion-vacio">No hay huéspedes alojados el <strong>${escapeHtmlCal(fechaFmt)}</strong>.</p>
+        `;
+        return;
+    }
+
+    let sumTotal = 0;
+    let sumSaldo = 0;
+    let sumAbonado = 0;
+    listaHab.forEach((r) => {
+        const total = valorMonetarioReservaHabitacion(r);
+        sumTotal += total;
+        sumSaldo += saldoReservaHabitacion(r);
+        sumAbonado += Math.min(montoAbonadoReserva(r), total);
+    });
+    listaChin.forEach((r) => {
+        const total = valorMonetarioReservaChinchorro(r);
+        sumTotal += total;
+        sumSaldo += saldoReservaChinchorro(r);
+        sumAbonado += Math.min(montoAbonadoReserva(r), total);
+    });
+
+    const filas = listaHab.map(htmlFilaAcomodacionHabitacion).join('') + listaChin.map(htmlFilaAcomodacionChinchorro).join('');
+    const totalHuespedes = listaHab.length + listaChin.length;
+
+    panel.innerHTML = `
+        <p class="gestion-fecha-consulta muted">Consulta: <strong>${escapeHtmlCal(fechaFmt)}</strong></p>
+        <div class="acomodacion-dia-chips">
+            <span class="ocupacion-chip chip-total"><span class="chip-label">Alojamientos</span><span class="chip-value">${totalHuespedes}</span></span>
+            <span class="ocupacion-chip chip-disponible"><span class="chip-label">Habitaciones</span><span class="chip-value">${listaHab.length}</span></span>
+            <span class="ocupacion-chip chip-ocupada"><span class="chip-label">Chinchorros</span><span class="chip-value">${listaChin.length}</span></span>
+            <span class="ocupacion-chip chip-porcentaje"><span class="chip-label">Saldo pendiente</span><span class="chip-value">${escapeHtmlCal(formatoMoneda(sumSaldo))}</span></span>
+        </div>
+        <div class="table-container acomodacion-dia-tabla-wrap">
+            <table class="data-table acomodacion-dia-tabla gestion-tabla-acomodacion">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Recurso</th>
+                        <th>Huésped</th>
+                        <th>Personas</th>
+                        <th>Salida</th>
+                        <th>Situación</th>
+                        <th>Tarifa</th>
+                        <th>Total</th>
+                        <th>Abonado</th>
+                        <th>Debe</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+                <tfoot>
+                    <tr class="acomodacion-dia-total-fila">
+                        <td colspan="7"><strong>Total (${totalHuespedes} alojamiento${totalHuespedes === 1 ? '' : 's'})</strong></td>
+                        <td><strong>${escapeHtmlCal(formatoMoneda(sumTotal))}</strong></td>
+                        <td><strong>${escapeHtmlCal(formatoMoneda(sumAbonado))}</strong></td>
+                        <td><strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(sumSaldo))}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+}
+
+function conteoOcupacionHabitacionesEfectiva() {
+    const total = habitaciones.length;
+    let ocupadas = 0;
+    let disponibles = 0;
+    let pendientes = 0;
+    let otros = 0;
+    const hoy = fechaLocalYMD();
+
+    habitaciones.forEach((h) => {
+        const est = estadoEfectivoHabitacion(h);
+        if (est === 'Ocupada') {
+            ocupadas += 1;
+            const r = reservas.find(
+                (x) =>
+                    Number(x.habitacion_id) === Number(h.id) &&
+                    reservaPendienteCheckinEnFecha(x, hoy)
+            );
+            if (r) pendientes += 1;
+        } else if (est === 'Disponible') {
+            disponibles += 1;
+        } else {
+            otros += 1;
+        }
+    });
+
+    return { total, ocupadas, disponibles, pendientes, otros };
+}
+
+function renderOcupacionOperativa() {
+    const panel = document.getElementById('panelOcupacionOperativa');
+    const grid = document.getElementById('gridOcupacionHabitaciones');
+    if (!panel || !grid) return;
+
+    const { total, ocupadas, disponibles, pendientes, otros } = conteoOcupacionHabitacionesEfectiva();
+    const pctOcup = total > 0 ? Math.round((ocupadas / total) * 100) : 0;
+    const wDisp = total > 0 ? (disponibles / total) * 100 : 0;
+    const wOcup = total > 0 ? (ocupadas / total) * 100 : 0;
+    const hoy = fechaLocalYMD();
+
+    panel.innerHTML = `
+        <div class="ocupacion-chips">
+            <span class="ocupacion-chip chip-total"><span class="chip-label">Total</span><span class="chip-value">${total}</span></span>
+            <span class="ocupacion-chip chip-disponible"><span class="chip-label">Disponibles</span><span class="chip-value">${disponibles}</span></span>
+            <span class="ocupacion-chip chip-ocupada"><span class="chip-label">Ocupadas</span><span class="chip-value">${ocupadas}</span></span>
+            <span class="ocupacion-chip chip-porcentaje"><span class="chip-label">Ocupación</span><span class="chip-value">${pctOcup}%</span></span>
+            ${pendientes ? `<span class="ocupacion-chip chip-pendiente"><span class="chip-label">Pend. check-in</span><span class="chip-value">${pendientes}</span></span>` : ''}
+            ${otros ? `<span class="ocupacion-chip chip-otros"><span class="chip-label">No disponibles</span><span class="chip-value">${otros}</span></span>` : ''}
+        </div>
+        <div class="ocupacion-bar-wrap">
+            <div class="ocupacion-bar" role="img" aria-label="${disponibles} disponibles, ${ocupadas} ocupadas">
+                ${total ? `<span class="ocupacion-bar-segment bar-disponible" style="width:${wDisp}%"></span>` : ''}
+                ${total ? `<span class="ocupacion-bar-segment bar-ocupada" style="width:${wOcup}%"></span>` : ''}
+                ${!total ? '<span class="ocupacion-bar-vacio">Sin habitaciones registradas</span>' : ''}
+            </div>
+        </div>
+    `;
+
+    if (!habitaciones.length) {
+        grid.innerHTML = '<p class="gestion-vacio">No hay habitaciones registradas.</p>';
+        return;
+    }
+
+    const ordenadas = [...habitaciones].sort((a, b) => {
+        const na = a.numero != null ? Number(a.numero) : Number(a.id);
+        const nb = b.numero != null ? Number(b.numero) : Number(b.id);
+        return na - nb;
+    });
+
+    grid.innerHTML = ordenadas
+        .map((h) => {
+            const est = estadoEfectivoHabitacion(h);
+            const clsEst =
+                est === 'Ocupada'
+                    ? 'gestion-hab-ocupada'
+                    : est === 'Disponible'
+                      ? 'gestion-hab-disponible'
+                      : 'gestion-hab-otro';
+            const occ = resolverOcupacionHabitacion(h);
+            const huesped = occ && occ.nombre ? occ.nombre : '';
+            const pendiente = reservas.some(
+                (r) =>
+                    Number(r.habitacion_id) === Number(h.id) &&
+                    reservaPendienteCheckinEnFecha(r, hoy)
+            );
+            const etiqueta = h.numero ? `Hab. ${h.numero}` : h.nombre || `Hab. #${h.id}`;
+            const detalle = huesped
+                ? `<p class="gestion-hab-huesped">${escapeHtmlCal(huesped)}</p>`
+                : pendiente
+                  ? '<p class="gestion-hab-huesped gestion-hab-pendiente">Pendiente check-in</p>'
+                  : '<p class="gestion-hab-huesped muted">Sin huésped</p>';
+            const saldo =
+                occ && occ.saldo != null && occ.saldo > 0.005
+                    ? `<p class="gestion-hab-saldo">Debe: ${escapeHtmlCal(formatoMoneda(occ.saldo))}</p>`
+                    : est === 'Ocupada'
+                      ? '<p class="gestion-hab-saldo gestion-hab-saldo--ok">Al día</p>'
+                      : '';
+            return `
+                <article class="gestion-hab-card ${clsEst}">
+                    <div class="gestion-hab-card-head">
+                        <strong>${escapeHtmlCal(etiqueta)}</strong>
+                        <span class="estado-badge ${claseEstadoBadgeRecurso(est)}">${escapeHtmlCal(est)}</span>
+                    </div>
+                    ${detalle}
+                    ${saldo}
+                </article>`;
+        })
+        .join('');
+}
+
+function calcularIngresosReservasActivas() {
+    const habActivas = reservas.filter((r) => reservaEsActivaOperativa(r));
+    const chinActivas = reservasChinchorros.filter((r) => r.estado === 'Activa');
+    const hoy = fechaLocalYMD();
+
+    const valorHab = sumarValoresReservas(habActivas, valorMonetarioReservaHabitacion);
+    const valorChin = sumarValoresReservas(chinActivas, valorMonetarioReservaChinchorro);
+    const abonadoHab = sumarValoresReservas(habActivas, (r) =>
+        Math.min(montoAbonadoReserva(r), valorMonetarioReservaHabitacion(r))
+    );
+    const abonadoChin = sumarValoresReservas(chinActivas, (r) =>
+        Math.min(montoAbonadoReserva(r), valorMonetarioReservaChinchorro(r))
+    );
+    const saldoHab = sumarValoresReservas(habActivas, saldoReservaHabitacion);
+    const saldoChin = sumarValoresReservas(chinActivas, saldoReservaChinchorro);
+
+    let ingresoHoyHab = 0;
+    let ingresoHoyChin = 0;
+    habActivas.forEach((r) => {
+        if (reservaOcupadaEnFecha(r, hoy) || reservaPendienteCheckinEnFecha(r, hoy)) {
+            ingresoHoyHab += tarifaDiariaReservaHabitacion(r);
+        }
+    });
+    chinActivas.forEach((r) => {
+        if (reservaActivaEnFecha(r, hoy)) ingresoHoyChin += tarifaDiariaReservaChinchorro(r);
+    });
+
+    return {
+        countHab: habActivas.length,
+        countChin: chinActivas.length,
+        valorTotal: valorHab + valorChin,
+        valorHab,
+        valorChin,
+        abonado: abonadoHab + abonadoChin,
+        abonadoHab,
+        abonadoChin,
+        saldo: saldoHab + saldoChin,
+        saldoHab,
+        saldoChin,
+        ingresoHoy: ingresoHoyHab + ingresoHoyChin,
+        ingresoHoyHab,
+        ingresoHoyChin
+    };
+}
+
+function renderIngresosActivasOperativa() {
+    const panel = document.getElementById('panelIngresosActivas');
+    if (!panel) return;
+
+    const f = calcularIngresosReservasActivas();
+    panel.innerHTML = `
+        <div class="fin-estado-grid gestion-ingresos-activas-grid">
+            ${htmlFinCard('fin-ingresos', 'Valor total (activas)', f.valorTotal, `Hab. ${formatoMoneda(f.valorHab)} (${f.countHab}) · Chin. ${formatoMoneda(f.valorChin)} (${f.countChin})`)}
+            ${htmlFinCard('fin-pagado', 'Abonado (activas)', f.abonado, `Hab. ${formatoMoneda(f.abonadoHab)} · Chin. ${formatoMoneda(f.abonadoChin)}`)}
+            ${htmlFinCard('fin-adeudado', 'Saldo pendiente (activas)', f.saldo, `Hab. ${formatoMoneda(f.saldoHab)} · Chin. ${formatoMoneda(f.saldoChin)}`)}
+            ${htmlFinCard('fin-ingresos', 'Ingreso estimado hoy', f.ingresoHoy, `Tarifa diaria de activas alojadas hoy · Hab. ${formatoMoneda(f.ingresoHoyHab)} · Chin. ${formatoMoneda(f.ingresoHoyChin)}`)}
+        </div>
+        <p class="fin-estado-nota">
+            Estimación basada en reservas <strong>activas</strong> y <strong>pendientes de check-in</strong> (habitaciones).
+            El ingreso de hoy corresponde a la tarifa diaria de quienes están alojados o deben ingresar hoy.
+        </p>
+    `;
+}
+
+function reservasConsolidadasTodas() {
+    const items = [];
+    reservas.forEach((r) => {
+        items.push({
+            tipo: 'habitacion',
+            tipoLabel: 'Habitación',
+            id: Number(r.id),
+            recurso: etiquetaHabitacionReserva(r),
+            huesped: `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—',
+            personas: `${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}`,
+            ingreso: ymdReservaIngreso(r),
+            salida: ymdReservaSalida(r),
+            estado: r.estado,
+            tarifa: Number(r.habitacion_precio_diario) || 0,
+            total: valorMonetarioReservaHabitacion(r),
+            abonado: Math.min(montoAbonadoReserva(r), valorMonetarioReservaHabitacion(r)),
+            saldo: saldoReservaHabitacion(r),
+            metodoPago: r.metodo_pago || '—',
+            observaciones: r.observaciones || '—',
+            fnSaldo: saldoReservaHabitacion,
+            claseEstado: claseEstadoReservaHabitacion(r.estado)
+        });
+    });
+    reservasChinchorros.forEach((r) => {
+        items.push({
+            tipo: 'chinchorro',
+            tipoLabel: 'Chinchorro',
+            id: Number(r.id),
+            recurso: etiquetaChinchorroReserva(r),
+            huesped: `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || '—',
+            personas: `${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}`,
+            ingreso: ymdReservaIngreso(r),
+            salida: ymdReservaSalida(r),
+            estado: r.estado,
+            tarifa: Number(r.chinchorro_precio_diario) || 0,
+            total: valorMonetarioReservaChinchorro(r),
+            abonado: Math.min(montoAbonadoReserva(r), valorMonetarioReservaChinchorro(r)),
+            saldo: saldoReservaChinchorro(r),
+            metodoPago: r.metodo_pago || '—',
+            observaciones: r.observaciones || '—',
+            fnSaldo: saldoReservaChinchorro,
+            claseEstado: claseEstadoReservaChinchorro(r.estado)
+        });
+    });
+    items.sort((a, b) => b.id - a.id);
+    return items;
+}
+
+function reservasConsolidadasFiltradas() {
+    const q = (document.getElementById('buscarReservasConsolidado')?.value || '').trim().toLowerCase();
+    const estadoFiltro = document.getElementById('filtroEstadoConsolidado')?.value || '';
+    const tipoFiltro = document.getElementById('filtroTipoConsolidado')?.value || '';
+
+    return reservasConsolidadasTodas().filter((item) => {
+        if (tipoFiltro && item.tipo !== tipoFiltro) return false;
+        if (estadoFiltro && item.estado !== estadoFiltro) return false;
+        if (!q) return true;
+        const blob = [
+            item.id,
+            item.tipoLabel,
+            item.recurso,
+            item.huesped,
+            item.estado,
+            item.metodoPago,
+            item.observaciones,
+            item.ingreso,
+            item.salida
+        ]
+            .join(' ')
+            .toLowerCase();
+        return blob.includes(q);
+    });
+}
+
+function renderListadoConsolidadoReservas() {
+    const tbody = document.getElementById('tablaReservasConsolidado');
+    if (!tbody) return;
+
+    const lista = reservasConsolidadasFiltradas();
+    if (!lista.length) {
+        tbody.innerHTML =
+            '<tr><td colspan="14" class="gestion-vacio-celda">No hay reservas que coincidan con los filtros actuales.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = lista
+        .map((item) => {
+            const ingresoFmt = new Date(`${item.ingreso}T12:00:00`).toLocaleDateString('es-ES');
+            const salidaFmt = new Date(`${item.salida}T12:00:00`).toLocaleDateString('es-ES');
+            const saldoHtml =
+                item.saldo > 0.005
+                    ? `<strong class="txt-saldo-pendiente">${escapeHtmlCal(formatoMoneda(item.saldo))}</strong>`
+                    : '<span class="muted">—</span>';
+            const unidad = item.tipo === 'habitacion' ? '/noche' : '/día';
+            return `
+                <tr>
+                    <td>${item.id}</td>
+                    <td>${escapeHtmlCal(item.tipoLabel)}</td>
+                    <td><strong>${escapeHtmlCal(item.recurso)}</strong></td>
+                    <td>${escapeHtmlCal(item.huesped)}</td>
+                    <td>${escapeHtmlCal(item.personas)}</td>
+                    <td>${escapeHtmlCal(ingresoFmt)}</td>
+                    <td>${escapeHtmlCal(salidaFmt)}</td>
+                    <td><span class="estado-badge ${item.claseEstado}">${escapeHtmlCal(item.estado)}</span></td>
+                    <td>${escapeHtmlCal(formatoMoneda(item.tarifa))} <span class="muted">${unidad}</span></td>
+                    <td><strong>${escapeHtmlCal(formatoMoneda(item.total))}</strong></td>
+                    <td>${escapeHtmlCal(formatoMoneda(item.abonado))}</td>
+                    <td>${saldoHtml}</td>
+                    <td>${escapeHtmlCal(item.metodoPago)}</td>
+                    <td class="gestion-obs-celda">${escapeHtmlCal(item.observaciones)}</td>
+                </tr>`;
+        })
+        .join('');
+}
+
+function renderGestionOperativa() {
+    renderAcomodacionOperativa();
+    renderOcupacionOperativa();
+    renderIngresosActivasOperativa();
+    renderDashboardKpis();
+    renderIngresosPorRecursoMes();
+    renderIndicadoresFinanciero();
+    renderListadoConsolidadoReservas();
+    refrescarPanelesOcupacionDual();
+}
+
+async function refrescarGestionOperativa() {
+    await Promise.all([
+        cargarHabitaciones(),
+        cargarChinchorros(),
+        cargarHuespedes(),
+        cargarReservas(),
+        cargarReservasChinchorros()
+    ]);
+    inicializarGestionOperativa();
+    renderGestionOperativa();
+}
+
+async function actualizarIndicadoresOcupacion() {
+    await refrescarGestionOperativa();
+}
+
 function descartarBannerSalidasHoy() {
     sessionStorage.setItem(`bannerSalidasDescartado_${fechaLocalYMD()}`, '1');
     const banner = document.getElementById('bannerSalidasHoy');
@@ -1716,10 +2206,9 @@ function mostrarSeccion(seccion, boton) {
     if (boton) {
         boton.classList.add('active');
     }
-    if (seccion === 'indicadores') {
-        refrescarPanelesOcupacionDual();
-        renderIndicadoresDashboard();
-        renderIndicadoresFinanciero();
+    if (seccion === 'gestion-operativa') {
+        inicializarGestionOperativa();
+        refrescarGestionOperativa();
     }
     if (seccion === 'calendario') {
         actualizarCalendarioDisponibilidad();
@@ -2532,6 +3021,14 @@ function claseEstadoReservaHabitacion(estado) {
     return 'estado-ocupada';
 }
 
+function claseEstadoReservaChinchorro(estado) {
+    const e = String(estado || '');
+    if (e === 'Activa') return 'estado-disponible';
+    if (e === 'Finalizada') return 'estado-en-limpieza';
+    if (e === 'Cancelada') return 'estado-fuera-de-servicio';
+    return 'estado-ocupada';
+}
+
 function habitacionEstadoSoloLecturaEnListado(hab) {
     const est = String((hab && hab.estado) || '').trim();
     if (habitacionConReservaActivaHoy(hab)) return true;
@@ -3075,8 +3572,8 @@ function actualizarResumenOcupacion() {
     if (!panel) return;
 
     const total = habitaciones.length;
-    const ocupadas = habitaciones.filter((h) => h.estado === 'Ocupada').length;
-    const disponibles = habitaciones.filter((h) => h.estado === 'Disponible').length;
+    const ocupadas = habitaciones.filter((h) => estadoEfectivoHabitacion(h) === 'Ocupada').length;
+    const disponibles = habitaciones.filter((h) => estadoEfectivoHabitacion(h) === 'Disponible').length;
     const pct = total > 0 ? Math.round((ocupadas / total) * 100) : 0;
     const wDisp = total > 0 ? (disponibles / total) * 100 : 0;
     const wOcup = total > 0 ? (ocupadas / total) * 100 : 0;
@@ -3146,8 +3643,8 @@ function refrescarPanelesOcupacionDual() {
     const elC = document.getElementById('dualPanelChinchorros');
     if (elH) {
         const t = habitaciones.length;
-        const o = habitaciones.filter((h) => h.estado === 'Ocupada').length;
-        const d = habitaciones.filter((h) => h.estado === 'Disponible').length;
+        const o = habitaciones.filter((h) => estadoEfectivoHabitacion(h) === 'Ocupada').length;
+        const d = habitaciones.filter((h) => estadoEfectivoHabitacion(h) === 'Disponible').length;
         elH.innerHTML = htmlOcupacionCard('🏨 Habitaciones', t, d, o);
     }
     if (elC) {
@@ -3228,19 +3725,6 @@ function renderIndicadoresOcupacion() {
             reservasActivasTotal
         )}
     `;
-}
-
-async function actualizarIndicadoresOcupacion() {
-    await Promise.all([
-        cargarHabitaciones(),
-        cargarChinchorros(),
-        cargarHuespedes(),
-        cargarReservas(),
-        cargarReservasChinchorros()
-    ]);
-    renderIndicadoresDashboard();
-    renderIndicadoresFinanciero();
-    refrescarPanelesOcupacionDual();
 }
 
 function reservasHabitacionAlojadasHoy() {
@@ -3394,9 +3878,7 @@ function mostrarHabitaciones() {
 
     actualizarResumenOcupacion();
     renderAcomodacionDelDia();
-    refrescarPanelesOcupacionDual();
-    renderIndicadoresDashboard();
-    renderIndicadoresFinanciero();
+    renderGestionOperativa();
 
     aplicarLayoutsVistasInventarioDesdeHotel();
 
@@ -3796,8 +4278,7 @@ async function cargarReservasChinchorros() {
         mostrarReservasChinchorros();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
-        renderIndicadoresFinanciero();
-        renderIndicadoresDashboard();
+        renderGestionOperativa();
     } catch (error) {
         console.error('Error al cargar reservas de chinchorros:', error);
     }
@@ -4384,8 +4865,7 @@ async function cargarReservas() {
         actualizarSelectsReserva();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
-        renderIndicadoresFinanciero();
-        renderIndicadoresDashboard();
+        renderGestionOperativa();
     } catch (error) {
         console.error('Error al cargar reservas:', error);
     }
