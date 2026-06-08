@@ -70,9 +70,7 @@ function actualizarFiltroModulo(modulo, valor) {
         return;
     }
     if (k === 'reservas') {
-        renderAcomodacionDelDia();
-        mostrarReservas('tablaReservas');
-        mostrarReservasChinchorros();
+        renderModuloReservas();
         return;
     }
     if (k === 'chinchorros') {
@@ -374,6 +372,92 @@ function reservasChinchorrosFiltradas() {
         coincideBusqueda(r.metodo_pago, t) ||
         coincideBusqueda(r.estado, t)
     );
+}
+
+function reservasUnificadasFiltradas() {
+    const items = [];
+    reservasHabitacionesFiltradas().forEach((r) => {
+        items.push({ tipo: 'habitacion', reserva: r, id: Number(r.id) });
+    });
+    reservasChinchorrosFiltradas().forEach((r) => {
+        items.push({ tipo: 'chinchorro', reserva: r, id: Number(r.id) });
+    });
+    items.sort((a, b) => b.id - a.id);
+    return items;
+}
+
+function renderModuloReservas() {
+    renderAcomodacionDelDia();
+    renderTablaReservasUnificada();
+}
+
+function renderTablaReservasUnificada() {
+    const tbody = document.getElementById('tablaReservasUnificada');
+    if (!tbody) return;
+
+    const lista = reservasUnificadasFiltradas();
+    if (!lista.length) {
+        const vacio =
+            reservas.length === 0 && reservasChinchorros.length === 0
+                ? 'No hay reservas registradas.'
+                : 'Sin resultados para la búsqueda actual.';
+        tbody.innerHTML = `<tr><td colspan="14" class="gestion-vacio-celda">${vacio}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = lista
+        .map((item) => {
+            const r = item.reserva;
+            if (item.tipo === 'habitacion') {
+                const fechaIngreso = new Date(r.fecha_ingreso).toLocaleDateString('es-ES');
+                const fechaSalida = new Date(r.fecha_salida).toLocaleDateString('es-ES');
+                const estadoClass = claseEstadoReservaHabitacion(r.estado);
+                const acciones = htmlAccionesReservaHabitacion(r)
+                    .replace(/^\s*<td[^>]*>\s*/, '')
+                    .replace(/\s*<\/td>\s*$/, '');
+                return `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>Habitación</td>
+                    <td><strong>${escapeHtmlCal(etiquetaHabitacionReserva(r))}</strong></td>
+                    <td>${escapeHtmlCal(`${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim())}</td>
+                    <td>${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}</td>
+                    <td>${fechaIngreso}</td>
+                    <td>${fechaSalida}</td>
+                    <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(r.estado)}</span></td>
+                    <td>${escapeHtmlCal(formatoMoneda(Number(r.habitacion_precio_diario) || 0))} <span class="muted">/noche</span></td>
+                    <td>${textoValorReservaHabitacion(r)}</td>
+                    <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaHabitacion, saldoReservaHabitacion)}</td>
+                    <td>${htmlCeldaSaldoReserva(r, saldoReservaHabitacion)}</td>
+                    <td class="gestion-obs-celda">${escapeHtmlCal(r.observaciones || '—')}</td>
+                    <td class="td-acciones-reserva">${acciones}</td>
+                </tr>`;
+            }
+            const fechaIngreso = new Date(r.fecha_ingreso).toLocaleDateString('es-ES');
+            const fechaSalida = new Date(r.fecha_salida).toLocaleDateString('es-ES');
+            const estadoClass = claseEstadoReservaChinchorro(r.estado);
+            const acciones = htmlAccionesReservaChinchorro(r)
+                .replace(/^\s*<td[^>]*>\s*/, '')
+                .replace(/\s*<\/td>\s*$/, '');
+            return `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>Chinchorro</td>
+                    <td><strong>${escapeHtmlCal(etiquetaChinchorroReserva(r))}</strong></td>
+                    <td>${escapeHtmlCal(`${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim())}</td>
+                    <td>${Number(r.adultos || 1)} / ${Number(r.ninos || 0)}</td>
+                    <td>${fechaIngreso}</td>
+                    <td>${fechaSalida}</td>
+                    <td><span class="estado-badge ${estadoClass}">${escapeHtmlCal(r.estado)}</span></td>
+                    <td>${escapeHtmlCal(formatoMoneda(Number(r.chinchorro_precio_diario) || 0))} <span class="muted">/día</span></td>
+                    <td>${textoValorReservaChinchorro(r)}</td>
+                    <td>${htmlCeldaPagoReserva(r, valorMonetarioReservaChinchorro, saldoReservaChinchorro)}</td>
+                    <td>${htmlCeldaSaldoReserva(r, saldoReservaChinchorro)}</td>
+                    <td class="gestion-obs-celda">${escapeHtmlCal(r.observaciones || '—')}</td>
+                    <td class="td-acciones-reserva">${acciones}</td>
+                </tr>`;
+        })
+        .join('');
 }
 
 function chinchorrosFiltrados() {
@@ -2208,9 +2292,7 @@ function mostrarSeccion(seccion, boton) {
         boton.classList.add('active');
     }
     if (seccion === 'reservas') {
-        renderAcomodacionDelDia();
-        mostrarReservas('tablaReservas');
-        mostrarReservasChinchorros();
+        renderModuloReservas();
     }
     if (seccion === 'gestion-operativa') {
         inicializarGestionOperativa();
@@ -3840,7 +3922,7 @@ function renderAcomodacionDelDia() {
         </div>
         <p class="acomodacion-dia-intro">
             Huéspedes alojados hoy: total de la estadía y saldo pendiente de cada reserva.
-            El registro completo de reservas aparece más abajo en este mismo módulo.
+            El registro unificado de todas las reservas continúa en la misma pestaña, justo debajo.
         </p>
         <div class="acomodacion-dia-chips">
             <span class="ocupacion-chip chip-total"><span class="chip-label">Habitaciones</span><span class="chip-value">${lista.length}</span></span>
@@ -4280,7 +4362,7 @@ async function cargarReservasChinchorros() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`);
         reservasChinchorros = await response.json();
-        mostrarReservasChinchorros();
+        renderModuloReservas();
         refrescarPanelesOcupacionDual();
         actualizarAlertasSalidasHoy();
         renderGestionOperativa();
@@ -4290,6 +4372,10 @@ async function cargarReservasChinchorros() {
 }
 
 function mostrarReservasChinchorros() {
+    if (document.getElementById('tablaReservasUnificada')) {
+        renderTablaReservasUnificada();
+        return;
+    }
     const tbody = document.getElementById('tablaReservasChinchorros');
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -4864,8 +4950,7 @@ async function cargarReservas() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas`);
         reservas = await response.json();
-        renderAcomodacionDelDia();
-        mostrarReservas('tablaReservas');
+        renderModuloReservas();
         mostrarHabitaciones();
         actualizarSelectsReserva();
         refrescarPanelesOcupacionDual();
@@ -4877,6 +4962,10 @@ async function cargarReservas() {
 }
 
 function mostrarReservas(tbodyId = 'tablaReservas') {
+    if (document.getElementById('tablaReservasUnificada')) {
+        renderModuloReservas();
+        return;
+    }
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';

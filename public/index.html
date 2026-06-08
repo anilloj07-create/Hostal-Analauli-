@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=42">
+    <link rel="stylesheet" href="styles.css?v=43">
 </head>
 <body>
     <div class="container">
@@ -116,68 +116,45 @@
                 </div>
             </div>
 
-            <div id="panelAcomodacionDia" class="acomodacion-dia-panel" aria-live="polite"></div>
+            <div class="reservas-modulo-unificado">
+                <div id="panelAcomodacionDia" class="acomodacion-dia-panel" aria-live="polite"></div>
 
-            <div class="modulo-busqueda-wrap">
-                <input
-                    type="search"
-                    id="buscarReservas"
-                    class="input-busqueda-modulo"
-                    placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
-                    oninput="actualizarFiltroModulo('reservas', this.value)">
-            </div>
-            <p class="section-intro">Registro completo de reservas de habitaciones y chinchorros. En habitaciones, el día de ingreso la reserva queda <strong>Pendiente de Check-in</strong> hasta confirmar la llegada con <strong>✅ Check-in</strong>; si no llega, pasa a <strong>No Presentado (No Show)</strong>. También puede <strong>abonar</strong>, <strong>totalizar</strong>, <strong>imprimir factura</strong> y <strong>enviar a la DIAN</strong>.</p>
+                <div class="reservas-registro-unificado">
+                    <div class="modulo-busqueda-wrap">
+                        <input
+                            type="search"
+                            id="buscarReservas"
+                            class="input-busqueda-modulo"
+                            placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
+                            oninput="actualizarFiltroModulo('reservas', this.value)">
+                    </div>
+                    <p class="section-intro">Módulo unificado: <strong>acomodación de hoy</strong> y <strong>registro completo</strong> de reservas de habitaciones y chinchorros. Use <strong>✅ Check-in</strong>, <strong>Abonar</strong>, <strong>Totalizar</strong>, <strong>Imprimir</strong> o <strong>DIAN</strong> según corresponda.</p>
 
-            <h3 class="subsection-title">Reservas de habitaciones</h3>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Habitación</th>
-                            <th>Huésped</th>
-                            <th>Adultos / Niños</th>
-                            <th>Tipo hab. requerida</th>
-                            <th>Método de pago</th>
-                            <th>Fecha Ingreso</th>
-                            <th>Fecha Salida</th>
-                            <th>Estado</th>
-                            <th>Tarifa / noche</th>
-                            <th>Total</th>
-                            <th>Abonado</th>
-                            <th>Saldo</th>
-                            <th>Observaciones</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaReservas"></tbody>
-                </table>
-            </div>
-
-            <h3 class="subsection-title">Reservas de chinchorros</h3>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Chinchorro</th>
-                            <th>Huésped</th>
-                            <th>Adultos / Niños</th>
-                            <th>Tipo requerido</th>
-                            <th>Método de pago</th>
-                            <th>Fecha inicio</th>
-                            <th>Fecha fin</th>
-                            <th>Estado</th>
-                            <th>Tarifa / día</th>
-                            <th>Total</th>
-                            <th>Abonado</th>
-                            <th>Saldo</th>
-                            <th>Observaciones</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaReservasChinchorros"></tbody>
-                </table>
+                    <h3 class="subsection-title">Registro de reservas</h3>
+                    <div class="table-container reservas-tabla-unificada-wrap">
+                        <table class="data-table reservas-tabla-unificada">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Tipo</th>
+                                    <th>Recurso</th>
+                                    <th>Huésped</th>
+                                    <th>Personas</th>
+                                    <th>Ingreso</th>
+                                    <th>Salida</th>
+                                    <th>Estado</th>
+                                    <th>Tarifa</th>
+                                    <th>Total</th>
+                                    <th>Abonado</th>
+                                    <th>Saldo</th>
+                                    <th>Observaciones</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaReservasUnificada"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -1188,6 +1165,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=56"></script>
+    <script src="app.js?v=57"></script>
 </body>
 </html>

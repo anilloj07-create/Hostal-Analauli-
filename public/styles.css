@@ -2150,6 +2150,28 @@ body::before {
     margin-bottom: 0;
 }
 
+.reservas-modulo-unificado {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.reservas-registro-unificado {
+    border-top: 2px solid #e8ecf1;
+    padding-top: 8px;
+}
+
+.reservas-tabla-unificada-wrap {
+    max-height: 520px;
+    overflow: auto;
+}
+
+.reservas-tabla-unificada th,
+.reservas-tabla-unificada td {
+    font-size: 0.88rem;
+    vertical-align: top;
+}
+
 .acomodacion-dia-panel {
     margin: 0 0 20px;
     padding: 16px 18px;
