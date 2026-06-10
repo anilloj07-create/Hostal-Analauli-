@@ -117,7 +117,8 @@ function initDatabase() {
       'ALTER TABLE hotel ADD COLUMN dian_rango_hasta INTEGER',
       'ALTER TABLE hotel ADD COLUMN dian_vigencia_desde TEXT',
       'ALTER TABLE hotel ADD COLUMN dian_vigencia_hasta TEXT',
-      'ALTER TABLE hotel ADD COLUMN dian_envio_automatico INTEGER DEFAULT 0'
+      'ALTER TABLE hotel ADD COLUMN dian_envio_automatico INTEGER DEFAULT 0',
+      "ALTER TABLE hotel ADD COLUMN formato_impresion_reserva TEXT DEFAULT '80mm'"
     ];
     hotelThemeMigrations.forEach((sql) => {
       db.run(sql, (e) => {
@@ -561,6 +562,21 @@ function updateHotelVistas(vista_habitaciones, vista_chinchorros, callback) {
   });
 }
 
+function updateHotelFormatoImpresion(formato_impresion_reserva, callback) {
+  const fmt = String(formato_impresion_reserva || '').trim().toLowerCase() === 'carta' ? 'carta' : '80mm';
+  ensureHotelRow((err) => {
+    if (err) return callback(err);
+    db.run(
+      `UPDATE hotel SET formato_impresion_reserva = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM hotel ORDER BY id DESC LIMIT 1)`,
+      [fmt],
+      (runErr) => {
+        if (runErr) return callback(runErr);
+        callback(null, { formato_impresion_reserva: fmt });
+      }
+    );
+  });
+}
+
 /**
  * Apariencia del hotel (colores + fondo).
  * `fondo_imagen_url` puede ser URL absoluta http/https o ruta local que comience con `/`.
@@ -591,7 +607,9 @@ function updateHotelApariencia(color_primario, color_secundario, color_acento, c
 }
 
 function enriquecerHabitacionConReservaActiva(h) {
-  if (!h || !h.reserva_activa_id || !h.reserva_checkin_at) {
+  const reservaConfirmada =
+    h && String(h.reserva_estado || '') === ESTADO_RESERVA_CONFIRMADA;
+  if (!h || !h.reserva_activa_id || !reservaConfirmada) {
     return {
       ...h,
       ocupante_nombre: null,
@@ -628,8 +646,7 @@ function getAllHabitaciones(callback) {
       (SELECT COUNT(*) FROM camas c WHERE c.habitacion_id = h.id) AS total_camas,
       (SELECT COUNT(*) FROM reservas r
         WHERE r.habitacion_id = h.id
-          AND r.estado IN ('Confirmada', 'Activa')
-          AND r.checkin_at IS NOT NULL
+          AND r.estado = 'Confirmada'
           AND DATE('now') BETWEEN r.fecha_ingreso AND r.fecha_salida) AS reservas_ocupadas_hoy,
       (SELECT COUNT(*) FROM reservas r
         WHERE r.habitacion_id = h.id
@@ -663,13 +680,13 @@ function getAllHabitaciones(callback) {
       INNER JOIN habitaciones h2 ON r2.habitacion_id = h2.id
       WHERE r2.estado IN (${sqlEstadosReservaBloqueanHabitacion()})
         AND DATE('now') BETWEEN r2.fecha_ingreso AND r2.fecha_salida
-        AND (r2.checkin_at IS NOT NULL OR r2.estado = '${ESTADO_RESERVA_PENDIENTE_CHECKIN}')
+        AND (r2.estado = '${ESTADO_RESERVA_CONFIRMADA}' OR r2.estado = '${ESTADO_RESERVA_PENDIENTE_CHECKIN}')
         AND r2.id = (
           SELECT r3.id FROM reservas r3
           WHERE r3.habitacion_id = r2.habitacion_id
             AND r3.estado IN (${sqlEstadosReservaBloqueanHabitacion()})
             AND DATE('now') BETWEEN r3.fecha_ingreso AND r3.fecha_salida
-          ORDER BY CASE WHEN r3.checkin_at IS NOT NULL THEN 0 ELSE 1 END, r3.fecha_ingreso DESC, r3.id DESC
+          ORDER BY CASE WHEN r3.estado = '${ESTADO_RESERVA_CONFIRMADA}' THEN 0 ELSE 1 END, r3.fecha_ingreso DESC, r3.id DESC
           LIMIT 1
         )
     ) ra ON ra.habitacion_id = h.id
@@ -952,14 +969,20 @@ function sqlEstadosReservaBloqueanHabitacion() {
   return "'Activa', 'Pendiente de Check-in', 'Confirmada'";
 }
 
+function sqlEstadosReservaBloqueanChinchorro() {
+  return sqlEstadosReservaBloqueanHabitacion();
+}
+
 function fechaHoyYMD() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function estadoInicialReservaSegunIngreso(fecha_ingreso) {
-  const ing = String(fecha_ingreso || '').slice(0, 10);
-  if (!ing) return ESTADO_RESERVA_ACTIVA;
-  return ing <= fechaHoyYMD() ? ESTADO_RESERVA_PENDIENTE_CHECKIN : ESTADO_RESERVA_ACTIVA;
+  return ESTADO_RESERVA_ACTIVA;
 }
 
 function getReservaById(id, callback) {
@@ -982,7 +1005,7 @@ function ensureCheckinAtColumn(callback) {
   });
 }
 
-/** Transiciones automáticas: pendiente de check-in el día de ingreso; no show si no llegó. */
+/** Transiciones automáticas: no show si no llegó en la fecha de ingreso. */
 function procesarEstadosCheckinReservas(callback) {
   const cb = typeof callback === 'function' ? callback : () => {};
   ensureCheckinAtColumn((colErr) => {
@@ -991,28 +1014,27 @@ function procesarEstadosCheckinReservas(callback) {
     db.run('BEGIN TRANSACTION');
     db.run(
       `UPDATE reservas SET estado = ?
-       WHERE estado IN (?, ?)
-         AND checkin_at IS NULL
-         AND DATE('now') > DATE(fecha_ingreso)`,
-      [ESTADO_RESERVA_NO_SHOW, ESTADO_RESERVA_ACTIVA, ESTADO_RESERVA_PENDIENTE_CHECKIN],
-      (e1) => {
-        if (e1) {
+       WHERE estado = ?
+         AND checkin_at IS NOT NULL`,
+      [ESTADO_RESERVA_CONFIRMADA, ESTADO_RESERVA_ACTIVA],
+      (e0) => {
+        if (e0) {
           db.run('ROLLBACK');
-          return cb(e1);
+          return cb(e0);
         }
         db.run(
           `UPDATE reservas SET estado = ?
-           WHERE estado = ?
+           WHERE estado IN (?, ?)
              AND checkin_at IS NULL
-             AND DATE(fecha_ingreso) = DATE('now')`,
-          [ESTADO_RESERVA_PENDIENTE_CHECKIN, ESTADO_RESERVA_ACTIVA],
-          (e2) => {
-            if (e2) {
+             AND DATE('now') > DATE(fecha_ingreso)`,
+          [ESTADO_RESERVA_NO_SHOW, ESTADO_RESERVA_ACTIVA, ESTADO_RESERVA_PENDIENTE_CHECKIN],
+          (e1) => {
+            if (e1) {
               db.run('ROLLBACK');
-              return cb(e2);
+              return cb(e1);
             }
-            db.run('COMMIT', (e3) => {
-              if (e3) return cb(e3);
+            db.run('COMMIT', (e2) => {
+              if (e2) return cb(e2);
               sincronizarTodosEstadosInventario(cb);
             });
           }
@@ -1039,10 +1061,11 @@ function confirmarCheckinReserva(id, usuario, callback) {
     if (est === ESTADO_RESERVA_CONFIRMADA) {
       return callback(new Error('La reserva ya está confirmada'));
     }
+    if (r.checkin_at != null && String(r.checkin_at).trim() !== '') {
+      return callback(new Error('El check-in de esta reserva ya fue confirmado'));
+    }
     if (est !== ESTADO_RESERVA_PENDIENTE_CHECKIN) {
-      if (!(est === ESTADO_RESERVA_ACTIVA && String(r.fecha_ingreso).slice(0, 10) <= fechaHoyYMD())) {
-        return callback(new Error('La reserva no está pendiente de confirmación'));
-      }
+      return callback(new Error('El check-in solo está disponible para reservas en Pendiente de Check-in'));
     }
     if (String(r.fecha_ingreso).slice(0, 10) > fechaHoyYMD()) {
       return callback(new Error('La confirmación solo está disponible desde la fecha de ingreso'));
@@ -1087,7 +1110,7 @@ function sincronizarEstadoHabitacionConReservas(habitacion_id, callback) {
       `
         SELECT
           SUM(CASE
-            WHEN estado IN ('Confirmada', 'Activa') AND checkin_at IS NOT NULL
+            WHEN estado = 'Confirmada'
               AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida THEN 1
             ELSE 0
           END) as cnt_hoy,
@@ -1254,7 +1277,23 @@ function totalizarReserva(id, callback) {
   });
 }
 
-function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado, callback) {
+/**
+ * Sin confirmar check-in al reservar: Activa (creada, check-in bloqueado hasta la llegada).
+ * Con confirmar check-in al reservar: Pendiente de Check-in (confirmada, espera llegada del huésped).
+ */
+function resolverEstadoInicialNuevaReserva(fecha_ingreso, opciones) {
+  const opts = opciones || {};
+  if (opts.confirmar_checkin_al_reservar) {
+    return { estado: ESTADO_RESERVA_PENDIENTE_CHECKIN };
+  }
+  return { estado: ESTADO_RESERVA_ACTIVA };
+}
+
+function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado, opciones, callback) {
+  if (typeof opciones === 'function') {
+    callback = opciones;
+    opciones = {};
+  }
   getHabitacionById(habitacion_id, (errHab, hab) => {
     if (errHab) return callback(errHab);
     if (!hab) return callback(new Error('Habitación no encontrada'));
@@ -1279,9 +1318,12 @@ function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacio
       const tarifaSegura = Number.isFinite(tarifa) && tarifa >= 0 ? tarifa : 0;
       const totalEst = tarifaSegura * unidadesEstadiaYMD(fecha_ingreso, fecha_salida);
       const abonoInicial = normalizarMontoAbonado(monto_abonado, totalEst);
-      const estadoInicial = estadoInicialReservaSegunIngreso(fecha_ingreso);
-      db.run("INSERT INTO reservas (habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial, estadoInicial], function(err) {
+      const inicial = resolverEstadoInicialNuevaReserva(fecha_ingreso, opciones);
+      db.run(
+        `INSERT INTO reservas (habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado, estado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial, inicial.estado],
+        function(err) {
         if (err) {
           callback(err);
         } else {
@@ -1303,8 +1345,9 @@ function createReserva(habitacion_id, huesped_id, adultos, ninos, tipo_habitacio
             fecha_salida,
             tarifa_noche: tarifaSegura,
             monto_abonado: abonoInicial,
-            estado: estadoInicial,
-            checkin_at: null
+            estado: inicial.estado,
+            checkin_at: null,
+            confirmacion_usuario: null
           });
           });
         }
@@ -1352,7 +1395,8 @@ function getAllChinchorros(callback) {
     SELECT ch.*,
            COUNT(DISTINCT rc.id) as reservas_activas
     FROM chinchorros ch
-    LEFT JOIN reservas_chinchorros rc ON ch.id = rc.chinchorro_id AND rc.estado = 'Activa'
+    LEFT JOIN reservas_chinchorros rc ON ch.id = rc.chinchorro_id
+      AND rc.estado IN (${sqlEstadosReservaBloqueanChinchorro()})
       AND DATE('now') BETWEEN rc.fecha_ingreso AND rc.fecha_salida
     GROUP BY ch.id
     ORDER BY ch.codigo
@@ -1413,7 +1457,7 @@ function chinchorroTieneReservaActivaHoy(chinchorro_id, callback) {
     `
       SELECT COUNT(*) as count FROM reservas_chinchorros
       WHERE chinchorro_id = ?
-      AND estado = 'Activa'
+      AND estado IN (${sqlEstadosReservaBloqueanChinchorro()})
       AND DATE('now') BETWEEN fecha_ingreso AND fecha_salida
     `,
     [chinchorro_id],
@@ -1495,7 +1539,11 @@ function totalizarReservaChinchorro(id, callback) {
   });
 }
 
-function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado, callback) {
+function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado, opciones, callback) {
+  if (typeof opciones === 'function') {
+    callback = opciones;
+    opciones = {};
+  }
   getChinchorroById(chinchorro_id, (errCh, ch) => {
     if (errCh) return callback(errCh);
     if (!ch) return callback(new Error('Chinchorro no encontrado'));
@@ -1505,7 +1553,7 @@ function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo
   db.all(`
     SELECT * FROM reservas_chinchorros
     WHERE chinchorro_id = ?
-    AND estado = 'Activa'
+    AND estado IN (${sqlEstadosReservaBloqueanChinchorro()})
     AND fecha_ingreso < ?
     AND fecha_salida > ?
   `, [chinchorro_id, fecha_salida, fecha_ingreso], (err, rows) => {
@@ -1518,9 +1566,10 @@ function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo
       const tarifaSegura = Number.isFinite(tarifaRaw) && tarifaRaw >= 0 ? tarifaRaw : 0;
       const totalEst = tarifaSegura * unidadesEstadiaYMD(fecha_ingreso, fecha_salida);
       const abonoInicial = normalizarMontoAbonado(monto_abonado, totalEst);
+      const inicial = resolverEstadoInicialNuevaReserva(fecha_ingreso, opciones);
       db.run(
-        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial],
+        "INSERT INTO reservas_chinchorros (chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifaSegura, abonoInicial, inicial.estado],
         function(err) {
           if (err) {
             callback(err);
@@ -1543,7 +1592,7 @@ function createReservaChinchorro(chinchorro_id, huesped_id, adultos, ninos, tipo
                 fecha_salida,
                 tarifa_dia: tarifaSegura,
                 monto_abonado: abonoInicial,
-                estado: 'Activa'
+                estado: inicial.estado
               });
             });
           }
@@ -1568,7 +1617,8 @@ function sincronizarEstadoChinchorroConReservas(chinchorro_id, callback) {
           SUM(CASE WHEN DATE('now') BETWEEN fecha_ingreso AND fecha_salida THEN 1 ELSE 0 END) as cnt_hoy,
           SUM(CASE WHEN DATE('now') < fecha_ingreso THEN 1 ELSE 0 END) as cnt_futuro
         FROM reservas_chinchorros
-        WHERE chinchorro_id = ? AND estado = 'Activa'
+        WHERE chinchorro_id = ?
+          AND estado IN (${sqlEstadosReservaBloqueanChinchorro()})
       `,
       [chinchorro_id],
       (err, agg) => {
@@ -2358,6 +2408,7 @@ module.exports = {
   ensureHotelRow,
   updateHotelNombre,
   updateHotelVistas,
+  updateHotelFormatoImpresion,
   updateHotelApariencia,
   updateHotelLogoUrl,
   getAllHabitaciones,

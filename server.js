@@ -622,6 +622,25 @@ app.put('/api/hotel/tema', requireAuth, (req, res) => {
   });
 });
 
+/** Formato de impresión de reservas: 80mm (ticket) | carta (hoja normal). */
+app.put('/api/hotel/formato-impresion', requireAuth, requireAdmin, (req, res) => {
+  const raw = req.body && req.body.formato_impresion_reserva != null
+    ? String(req.body.formato_impresion_reserva).trim().toLowerCase()
+    : '';
+  if (!['80mm', 'carta'].includes(raw)) {
+    return res.status(400).json({ error: 'El formato debe ser 80mm o carta.' });
+  }
+  db.updateHotelFormatoImpresion(raw, (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({
+      message: 'Formato de impresión guardado',
+      formato_impresion_reserva: result.formato_impresion_reserva
+    });
+  });
+});
+
 /** Vistas del inventario: tarjetas | lista | tabla (solo administrador en la UI). */
 app.put('/api/hotel/vistas', requireAuth, requireAdmin, (req, res) => {
   const allowed = ['tarjetas', 'lista', 'tabla'];
@@ -1374,6 +1393,7 @@ app.post('/api/reservas', requireAuth, (req, res) => {
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de salida debe ser posterior a la de ingreso' });
   }
+  const confirmarCheckinAlReservar = req.body.confirmar_checkin_al_reservar === true;
   db.createReserva(
     habitacion_id,
     huesped_id,
@@ -1386,6 +1406,7 @@ app.post('/api/reservas', requireAuth, (req, res) => {
     fecha_salida,
     tarifaNoche,
     parseMontoAbonado(req.body),
+    { confirmar_checkin_al_reservar: confirmarCheckinAlReservar },
     (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -1711,6 +1732,7 @@ app.post('/api/reservas-chinchorros', requireAuth, (req, res) => {
   if (new Date(fecha_ingreso) >= new Date(fecha_salida)) {
     return res.status(400).json({ error: 'La fecha de fin debe ser posterior al inicio' });
   }
+  const confirmarCheckinAlReservar = req.body.confirmar_checkin_al_reservar === true;
   db.createReservaChinchorro(
     chinchorro_id,
     huesped_id,
@@ -1723,6 +1745,7 @@ app.post('/api/reservas-chinchorros', requireAuth, (req, res) => {
     fecha_salida,
     parseTarifaDia(req.body),
     parseMontoAbonado(req.body),
+    { confirmar_checkin_al_reservar: confirmarCheckinAlReservar },
     (err, reserva) => {
     if (err) {
       res.status(500).json({ error: err.message });

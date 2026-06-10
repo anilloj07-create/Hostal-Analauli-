@@ -719,6 +719,12 @@ body::before {
     border-left: 4px solid #94a3b8;
 }
 
+.chip-reservada {
+    background: #fff8e6;
+    border-color: #f0d78c;
+    color: #7a5a00;
+}
+
 .chip-pendiente {
     background: #fff7ed;
     border-color: #fdba74;
@@ -1682,7 +1688,47 @@ body::before {
     transition: all 0.2s;
 }
 
-/* Factura térmica 80mm — vista previa en modal */
+.formato-impresion-opciones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.formato-impresion-opcion {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    border: 2px solid var(--color-borde-suave, #e0d5c8);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.formato-impresion-opcion:has(input:checked) {
+    border-color: var(--color-primario, #2d6a4f);
+    box-shadow: 0 0 0 1px var(--color-primario, #2d6a4f);
+}
+
+.formato-impresion-opcion input {
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.formato-impresion-opcion-texto {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.formato-impresion-opcion-texto small {
+    color: #666;
+    font-size: 0.85em;
+}
+
+/* Factura — vista previa en modal */
 .factura-preview-shell {
     margin-top: 12px;
     display: flex;
@@ -1691,6 +1737,60 @@ body::before {
     background: #e8e8e8;
     border-radius: 12px;
     overflow: auto;
+}
+
+.factura-preview-shell--carta {
+    justify-content: stretch;
+    padding: 20px;
+}
+
+.factura-preview-shell--carta .factura-carta {
+    width: 100%;
+    max-width: 210mm;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 12mm 14mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+}
+
+.factura-preview-shell--carta .factura-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-align: left;
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.factura-preview-shell--carta .factura-cabecera h1 {
+    font-size: 18px;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.factura-preview-shell--carta .factura-sep {
+    border-top: 1px solid #ccc;
+}
+
+.factura-preview-shell--carta .factura-seccion-titulo {
+    text-align: left;
+    font-size: 11px;
+}
+
+.factura-preview-shell--carta .factura-linea > span:first-child {
+    color: #555;
+}
+
+.factura-preview-shell--carta .factura-linea > span:last-child {
+    font-weight: 600;
+}
+
+.factura-preview-shell--carta .factura-linea--total {
+    border-top: 1px solid #333;
+    font-size: 13px;
 }
 
 .modal-factura-header {
@@ -2156,6 +2256,48 @@ body::before {
     gap: 28px;
 }
 
+.reservas-resumen-hoy {
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    background: #faf8f4;
+    border: 1px solid #e8dfd0;
+    border-radius: 12px;
+}
+
+.reservas-resumen-hoy-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.reservas-resumen-hoy-titulo {
+    font-weight: 700;
+    color: #2d5a3d;
+}
+
+.reservas-resumen-hoy-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+button.reservas-chip-filtro {
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+button.reservas-chip-filtro:hover,
+button.reservas-chip-filtro:focus-visible {
+    filter: brightness(0.96);
+    outline: 2px solid #2d5a3d;
+    outline-offset: 2px;
+}
+
 .reservas-registro-unificado {
     border-top: 2px solid #e8ecf1;
     padding-top: 8px;
@@ -2236,16 +2378,74 @@ body::before {
     border-top: 2px solid #ffd4b3;
 }
 
-.btn-confirmar-reserva {
+.btn-confirmar-reserva,
+.btn-checkin-reserva {
     white-space: nowrap;
     font-weight: 600;
-    min-width: 130px;
+    min-width: 100px;
+}
+
+.modal-confirm-detalle {
+    margin: -12px 0 20px;
+    font-size: 0.95rem;
 }
 
 .td-confirmar-reserva {
     min-width: 150px;
     vertical-align: middle;
     text-align: center;
+}
+
+.etiqueta-checkin-bloqueado {
+    opacity: 0.85;
+    font-size: 0.78em;
+    white-space: nowrap;
+}
+
+.etiqueta-checkin-programado {
+    display: inline-block;
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+
+.etiqueta-checkin-ok {
+    display: inline-block;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.form-hint--checkin {
+    display: block;
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    background: #f4f8f1;
+    border: 1px solid #d5e5cc;
+    border-radius: 8px;
+}
+
+.form-group--checkin-reserva {
+    padding: 12px 14px;
+    background: #faf8f4;
+    border: 1px solid #e8dfd0;
+    border-radius: 10px;
+}
+
+.checkbox-checkin-reserva {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0;
+}
+
+.checkbox-checkin-reserva input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: #2d5a3d;
 }
 
 .reservas-filtros-wrap {

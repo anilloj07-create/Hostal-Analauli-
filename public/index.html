@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mi Hotel</title>
-    <link rel="stylesheet" href="styles.css?v=46">
+    <link rel="stylesheet" href="styles.css?v=50">
 </head>
 <body>
     <div class="container">
@@ -117,9 +117,8 @@
             </div>
 
             <div class="reservas-modulo-unificado">
-                <div id="panelAcomodacionDia" class="acomodacion-dia-panel" aria-live="polite"></div>
-
                 <div class="reservas-registro-unificado">
+                    <div id="panelResumenReservasHoy" class="reservas-resumen-hoy" aria-live="polite"></div>
                     <div class="gestion-toolbar gestion-toolbar--filtros reservas-filtros-wrap">
                         <input
                             type="search"
@@ -128,8 +127,9 @@
                             placeholder="Buscar reserva por huésped, habitación, chinchorro o estado..."
                             oninput="actualizarFiltroModulo('reservas', this.value)">
                         <select id="filtroEstadoReservas" class="select-filtro-gestion" onchange="renderModuloReservas()" title="Filtrar por estado de la reserva">
-                            <option value="">Todos los estados</option>
-                            <option value="__pendiente_confirmacion__">Reservadas · pendientes de confirmación</option>
+                            <option value="">Todas las reservas</option>
+                            <option value="__hoy_cobro__">Hoy · cobro pendiente</option>
+                            <option value="__pendiente_confirmacion__">Pendiente de Check-in</option>
                             <option value="Pendiente de Check-in">Pendiente de Check-in</option>
                             <option value="Activa">Activa</option>
                             <option value="Confirmada">Confirmada</option>
@@ -138,9 +138,9 @@
                             <option value="Cancelada">Cancelada</option>
                         </select>
                     </div>
-                    <p class="section-intro">La confirmación de llegada es <strong>manual</strong>: use el botón <strong>Confirmar Reserva</strong> y responda <strong>Sí/No</strong> cuando el huésped llegue. Filtre por <strong>Reservadas · pendientes de confirmación</strong> para ver las que esperan su confirmación.</p>
+                    <p class="section-intro">Sin marcar la opción: <strong>Activa</strong> (check-in bloqueado). Marcada: <strong>Pendiente de Check-in</strong> en amarillo. El ingreso se completa el día de llegada con <strong>Check-in</strong> (Sí/No).</p>
 
-                    <h3 class="subsection-title">Registro de reservas</h3>
+                    <h3 class="subsection-title">Todas las reservas</h3>
                     <div class="table-container reservas-tabla-unificada-wrap">
                         <table class="data-table reservas-tabla-unificada">
                             <thead>
@@ -153,7 +153,7 @@
                                     <th>Ingreso</th>
                                     <th>Salida</th>
                                     <th>Estado</th>
-                                    <th>Confirmar</th>
+                                    <th>Check-in</th>
                                     <th>Tarifa</th>
                                     <th>Total</th>
                                     <th>Abonado</th>
@@ -414,6 +414,33 @@
                 </div>
                 <div class="tema-acciones" style="margin-top:12px">
                     <button type="button" class="btn-primary" onclick="guardarVistasInventario()">Guardar vistas</button>
+                </div>
+            </div>
+
+            <div id="bloqueFormatoImpresion" class="solo-admin oculto-sin-permiso">
+                <h3 class="subsection-title">Formato de impresión de reservas</h3>
+                <p class="section-intro" style="margin-top:-6px">
+                    Elija cómo se imprimirá el comprobante al pulsar <strong>🖨️ Imprimir</strong> en habitaciones y chinchorros.
+                </p>
+                <div class="formato-impresion-opciones">
+                    <label class="formato-impresion-opcion">
+                        <input type="radio" name="formatoImpresionReserva" id="formatoImpresion80mm" value="80mm" checked>
+                        <span class="formato-impresion-opcion-texto">
+                            <strong>Ticket 80 mm</strong>
+                            <small>Impresora térmica o rollo estrecho</small>
+                        </span>
+                    </label>
+                    <label class="formato-impresion-opcion">
+                        <input type="radio" name="formatoImpresionReserva" id="formatoImpresionCarta" value="carta">
+                        <span class="formato-impresion-opcion-texto">
+                            <strong>Hoja carta</strong>
+                            <small>Papel normal tamaño carta (A4)</small>
+                        </span>
+                    </label>
+                </div>
+                <p id="formatoImpresionLectura" class="modal-hint"></p>
+                <div class="tema-acciones" style="margin-top:12px">
+                    <button type="button" class="btn-primary" onclick="guardarFormatoImpresionReserva()">Guardar formato de impresión</button>
                 </div>
             </div>
 
@@ -903,6 +930,15 @@
                     <label>Fecha de Salida *</label>
                     <input type="date" id="fechaSalida" required>
                 </div>
+                <div id="grupoCheckinAlReservar" class="form-group form-group--checkin-reserva">
+                    <label class="checkbox-checkin-reserva">
+                        <input type="checkbox" id="checkinAlReservar">
+                        <span>Confirmar check-in al reservar</span>
+                    </label>
+                    <small id="hintCheckinAlReservar" class="form-hint form-hint--checkin">
+                        Sin marcar: <strong>Activa</strong> (check-in bloqueado). Marcada: <strong>Pendiente de Check-in</strong> (amarillo), confirmada y a la espera de la llegada del huésped.
+                    </small>
+                </div>
                 <div class="form-group">
                     <label>Observaciones</label>
                     <textarea id="observacionesReserva" rows="3" placeholder="Notas adicionales de la reserva"></textarea>
@@ -986,6 +1022,15 @@
                 <div class="form-group">
                     <label>Fecha de fin *</label>
                     <input type="date" id="fechaSalidaChin" required>
+                </div>
+                <div id="grupoCheckinAlReservarChin" class="form-group form-group--checkin-reserva">
+                    <label class="checkbox-checkin-reserva">
+                        <input type="checkbox" id="checkinAlReservarChin">
+                        <span>Confirmar check-in al reservar</span>
+                    </label>
+                    <small id="hintCheckinAlReservarChin" class="form-hint form-hint--checkin">
+                        Sin marcar: <strong>Activa</strong> (check-in bloqueado). Marcada: <strong>Pendiente de Check-in</strong> (amarillo), confirmada y a la espera de la llegada del huésped.
+                    </small>
                 </div>
                 <div class="form-group">
                     <label>Observaciones</label>
@@ -1164,11 +1209,12 @@
         </div>
     </div>
 
-    <!-- Modal Check de Reserva -->
+    <!-- Modal Check-in Sí/No -->
     <div id="modalConfirmarCheckin" class="modal">
         <div class="modal-content modal-confirm-checkin">
-            <h2>Confirmar Reserva</h2>
-            <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Está seguro de que desea confirmar esta reserva?</p>
+            <h2 id="tituloModalConfirmarCheckin">Check-in de reserva</h2>
+            <p id="textoModalConfirmarCheckin" class="modal-confirm-texto">¿Confirma el check-in de esta reserva?</p>
+            <p id="detalleModalConfirmarCheckin" class="modal-confirm-detalle muted"></p>
             <div class="modal-actions modal-actions-confirm-sino">
                 <button type="button" class="btn-primary btn-confirm-si" onclick="responderConfirmarCheckin(true)">Sí</button>
                 <button type="button" class="btn-secondary btn-confirm-no" onclick="responderConfirmarCheckin(false)">No</button>
@@ -1177,6 +1223,6 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=63"></script>
+    <script src="app.js?v=83"></script>
 </body>
 </html>

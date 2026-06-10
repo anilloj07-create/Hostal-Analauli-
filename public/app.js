@@ -346,23 +346,46 @@ function initComboboxesHuespedReserva() {
     }
 }
 
+function reservaEsPendienteCheckinEstado(r) {
+    return r && String(r.estado || '').trim() === 'Pendiente de Check-in' && !reservaYaConfirmadaEntrega(r);
+}
+
+/** Activa o pendiente de check-in sin ingreso confirmado aún. */
+function reservaActivaPendienteCheckin(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    const est = String(r.estado || '').trim();
+    if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
+    return est === 'Activa' || est === 'Pendiente de Check-in';
+}
+
+/** El día de ingreso (o durante la estadía) ya puede ejecutarse el check-in Sí/No. */
 function reservaPendienteConfirmacionEntrega(r) {
     if (!r || reservaYaConfirmadaEntrega(r)) return false;
     const est = String(r.estado || '').trim();
     if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
-    if (est === 'Pendiente de Check-in') return true;
     const hoy = fechaLocalYMD();
     const ing = ymdReservaIngreso(r);
     const sal = ymdReservaSalida(r);
-    if (est === 'Activa' && ing <= hoy && hoy <= sal) return true;
+    if (ing > hoy) return false;
+    if (est === 'Pendiente de Check-in') return hoy <= sal;
     return false;
 }
 
-function aplicarFiltroEstadoReservasHabitacion(lista) {
+function reservaActivaConCheckinBloqueado(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    return String(r.estado || '').trim() === 'Activa';
+}
+
+function aplicarFiltroEstadoReserva(lista, opciones = {}) {
+    const { soloAcomodacionHabitacion = false } = opciones;
     const filtro = document.getElementById('filtroEstadoReservas')?.value || '';
     if (!filtro) return lista;
     if (filtro === '__pendiente_confirmacion__') {
-        return lista.filter((r) => reservaPendienteConfirmacionEntrega(r));
+        return lista.filter((r) => reservaEsPendienteCheckinEstado(r));
+    }
+    if (filtro === '__hoy_cobro__') {
+        if (!soloAcomodacionHabitacion) return [];
+        return lista.filter((r) => reservaVisibleEnAcomodacionDia(r));
     }
     return lista.filter((r) => String(r.estado || '').trim() === filtro);
 }
@@ -379,24 +402,28 @@ function reservasHabitacionesFiltradas() {
             coincideBusqueda(r.tipo_habitacion_requerida, t) ||
             coincideBusqueda(r.metodo_pago, t) ||
             coincideBusqueda(r.estado, t) ||
-            (reservaPendienteConfirmacionEntrega(r) && coincideBusqueda('pendiente confirmacion', t))
+            (reservaActivaPendienteCheckin(r) && coincideBusqueda('pendiente checkin', t)) ||
+            (reservaActivaPendienteCheckin(r) && coincideBusqueda('activa pendiente', t))
         );
     }
-    return aplicarFiltroEstadoReservasHabitacion(lista);
+    return aplicarFiltroEstadoReserva(lista, { soloAcomodacionHabitacion: true });
 }
 
 function reservasChinchorrosFiltradas() {
     const t = filtrosBusqueda.reservas;
-    if (!t) return reservasChinchorros;
-    return reservasChinchorros.filter((r) =>
-        coincideBusqueda(r.id, t) ||
-        coincideBusqueda(etiquetaChinchorroReserva(r), t) ||
-        coincideBusqueda(r.huesped_nombre, t) ||
-        coincideBusqueda(r.huesped_apellido, t) ||
-        coincideBusqueda(r.tipo_requerido, t) ||
-        coincideBusqueda(r.metodo_pago, t) ||
-        coincideBusqueda(r.estado, t)
-    );
+    let lista = reservasChinchorros;
+    if (t) {
+        lista = lista.filter((r) =>
+            coincideBusqueda(r.id, t) ||
+            coincideBusqueda(etiquetaChinchorroReserva(r), t) ||
+            coincideBusqueda(r.huesped_nombre, t) ||
+            coincideBusqueda(r.huesped_apellido, t) ||
+            coincideBusqueda(r.tipo_requerido, t) ||
+            coincideBusqueda(r.metodo_pago, t) ||
+            coincideBusqueda(r.estado, t)
+        );
+    }
+    return aplicarFiltroEstadoReserva(lista);
 }
 
 function reservasUnificadasFiltradas() {
@@ -412,8 +439,61 @@ function reservasUnificadasFiltradas() {
 }
 
 function renderModuloReservas() {
-    renderAcomodacionDelDia();
+    renderResumenReservasHoy();
     renderTablaReservasUnificada();
+}
+
+function aplicarFiltroReservasHoyCobro() {
+    const filtro = document.getElementById('filtroEstadoReservas');
+    if (filtro) filtro.value = '__hoy_cobro__';
+    renderModuloReservas();
+    const bloque = document.querySelector('.reservas-registro-unificado');
+    if (bloque) bloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderResumenReservasHoy() {
+    const panel = document.getElementById('panelResumenReservasHoy');
+    if (!panel) return;
+
+    const hoy = fechaLocalYMD();
+    const fechaFmt = new Date(`${hoy}T12:00:00`).toLocaleDateString('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+    const alojadosHoy = reservas.filter((r) => {
+        if (reservaOcupadaEnFecha(r, hoy)) return true;
+        return (
+            reservaPendienteConfirmacionEntrega(r) &&
+            ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r))
+        );
+    });
+    const conSaldo = alojadosHoy.filter((r) => saldoReservaHabitacion(r) > 0.005);
+    const pendientesCheckin = reservas.filter((r) => reservaEsPendienteCheckinEstado(r));
+    const pendientesHoy = alojadosHoy.filter((r) => reservaPendienteConfirmacionEntrega(r));
+    let sumSaldo = 0;
+    let sumTotal = 0;
+    conSaldo.forEach((r) => {
+        sumTotal += valorMonetarioReservaHabitacion(r);
+        sumSaldo += saldoReservaHabitacion(r);
+    });
+
+    panel.innerHTML = `
+        <div class="reservas-resumen-hoy-header">
+            <span class="reservas-resumen-hoy-titulo">Resumen de hoy</span>
+            <span class="muted">${escapeHtmlCal(fechaFmt)}</span>
+        </div>
+        <div class="reservas-resumen-hoy-chips">
+            <span class="ocupacion-chip chip-total"><span class="chip-label">Alojados hoy</span><span class="chip-value">${alojadosHoy.length}</span></span>
+            <button type="button" class="ocupacion-chip chip-ocupada reservas-chip-filtro" onclick="aplicarFiltroReservasHoyCobro()" title="Ver en el listado unificado">
+                <span class="chip-label">Cobro pendiente</span><span class="chip-value">${conSaldo.length} · ${escapeHtmlCal(formatoMoneda(sumSaldo))}</span>
+            </button>
+            <span class="ocupacion-chip chip-pendiente"><span class="chip-label">Pend. check-in hoy</span><span class="chip-value">${pendientesHoy.length}</span></span>
+            <span class="ocupacion-chip chip-reservada"><span class="chip-label">Pend. de Check-in</span><span class="chip-value">${pendientesCheckin.length}</span></span>
+            <span class="ocupacion-chip chip-disponible"><span class="chip-label">Total a cobrar hoy</span><span class="chip-value">${escapeHtmlCal(formatoMoneda(sumTotal))}</span></span>
+        </div>
+    `;
 }
 
 function renderTablaReservasUnificada() {
@@ -466,7 +546,7 @@ function renderTablaReservasUnificada() {
                 .replace(/^\s*<td[^>]*>\s*/, '')
                 .replace(/\s*<\/td>\s*$/, '');
             return `
-                <tr>
+                <tr data-reserva-id="${r.id}" data-reserva-tipo="chinchorro">
                     <td>${r.id}</td>
                     <td>Chinchorro</td>
                     <td><strong>${escapeHtmlCal(etiquetaChinchorroReserva(r))}</strong></td>
@@ -628,7 +708,120 @@ function datosMarcaHotelParaFactura() {
 
 let facturaReservaDocumentoCache = '';
 
-function estilosFacturaReservaHtml() {
+function formatoImpresionReservaNormalizado(hotel) {
+    const f = String((hotel && hotel.formato_impresion_reserva) || '80mm').trim().toLowerCase();
+    return f === 'carta' ? 'carta' : '80mm';
+}
+
+function formatoImpresionReservaActivo() {
+    return formatoImpresionReservaNormalizado(datosHotelCache);
+}
+
+function etiquetaFormatoImpresionReserva(formato) {
+    return formato === 'carta' ? 'Hoja carta' : 'Ticket 80 mm';
+}
+
+function estilosFacturaReservaHtml(formato) {
+    const esCarta = formato === 'carta';
+    if (esCarta) {
+        return `
+        @page { size: A4 portrait; margin: 12mm; }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+            line-height: 1.45;
+            color: #1a1a1a;
+            background: #fff;
+        }
+        .factura-carta {
+            width: 100%;
+            max-width: 186mm;
+            margin: 0 auto;
+            padding: 8mm 10mm;
+        }
+        .factura-cabecera {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            text-align: left;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #333;
+            margin-bottom: 12px;
+        }
+        .factura-cabecera > div:last-child { flex: 1; }
+        .factura-logo {
+            display: block;
+            max-width: 42mm;
+            max-height: 22mm;
+            object-fit: contain;
+        }
+        .factura-logo-placeholder { font-size: 2.2rem; line-height: 1; }
+        .factura-cabecera h1 {
+            margin: 0 0 4px;
+            font-size: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .factura-cabecera p { margin: 0; font-size: 13px; color: #444; }
+        .factura-sep { border-top: 1px solid #ccc; margin: 10px 0; }
+        .factura-seccion-titulo {
+            font-weight: bold;
+            text-align: left;
+            margin: 8px 0 6px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #333;
+            letter-spacing: 0.04em;
+        }
+        .factura-linea {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin: 4px 0;
+            padding: 2px 0;
+        }
+        .factura-linea > span:first-child { flex: 1; min-width: 0; color: #555; }
+        .factura-linea > span:last-child { flex-shrink: 0; text-align: right; font-weight: 600; }
+        .factura-linea--sub { padding-left: 8px; font-size: 11px; color: #666; }
+        .factura-linea--bloque { display: block; }
+        .factura-linea--bloque > span { display: block; font-weight: normal; }
+        .factura-linea--total {
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #333;
+        }
+        .factura-linea--saldo { font-weight: bold; color: #b71c1c; }
+        .factura-pie {
+            text-align: center;
+            font-size: 11px;
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #ccc;
+            color: #666;
+        }
+        .factura-dian {
+            text-align: center;
+            margin-top: 14px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .factura-dian-titulo { font-weight: bold; font-size: 12px; margin-bottom: 6px; }
+        .factura-qr { display: block; margin: 6px auto; width: 36mm; max-width: 100%; height: auto; }
+        .factura-cufe { font-size: 9px; word-break: break-all; line-height: 1.3; margin-top: 6px; text-align: left; }
+        .factura-dian-estado { font-size: 10px; margin-top: 4px; color: #2e7d32; }
+        @media print {
+            html, body { padding: 0; }
+            .factura-carta { max-width: none; }
+        }
+    `;
+    }
     return `
         @page { size: 80mm auto; margin: 0; }
         * { box-sizing: border-box; }
@@ -732,7 +925,10 @@ function formatoFechaFactura(valor) {
     return Number.isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-ES');
 }
 
-function construirFacturaReservaInnerHtml(r, tipo, comprobante) {
+function construirFacturaReservaInnerHtml(r, tipo, comprobante, formato) {
+    const fmt = formato || formatoImpresionReservaActivo();
+    const esCarta = fmt === 'carta';
+    const claseDoc = esCarta ? 'factura-carta' : 'factura-ticket';
     const marca = datosMarcaHotelParaFactura();
     const esChin = tipo === 'chinchorro';
     const fnTotal = esChin ? valorMonetarioReservaChinchorro : valorMonetarioReservaHabitacion;
@@ -791,13 +987,23 @@ function construirFacturaReservaInnerHtml(r, tipo, comprobante) {
         </div>`
         : '';
 
-    return `
-    <div class="factura-ticket">
-        <header class="factura-cabecera">
+    const cabeceraHtml = esCarta
+        ? `<header class="factura-cabecera">
+            ${logoHtml}
+            <div>
+                <h1>${escapeHtmlCal(marca.nombre)}</h1>
+                <p>Comprobante de reserva</p>
+            </div>
+        </header>`
+        : `<header class="factura-cabecera">
             ${logoHtml}
             <h1>${escapeHtmlCal(marca.nombre)}</h1>
             <p>COMPROBANTE DE RESERVA</p>
-        </header>
+        </header>`;
+
+    return `
+    <div class="${claseDoc}">
+        ${cabeceraHtml}
         <div class="factura-sep"></div>
         <div class="factura-linea factura-linea--total"><span>NO. FACTURA</span><span>${numeroFactura}</span></div>
         ${lineaResolucion}
@@ -833,8 +1039,9 @@ function construirFacturaReservaInnerHtml(r, tipo, comprobante) {
     </div>`;
 }
 
-function construirFacturaReservaDocumento(r, tipo, comprobante) {
-    const inner = construirFacturaReservaInnerHtml(r, tipo, comprobante);
+function construirFacturaReservaDocumento(r, tipo, comprobante, formato) {
+    const fmt = formato || formatoImpresionReservaActivo();
+    const inner = construirFacturaReservaInnerHtml(r, tipo, comprobante, fmt);
     const prefijo = tipo === 'chinchorro' ? 'CH' : 'HAB';
     const num = (comprobante && comprobante.numero) || `${prefijo}-${r.id}`;
     return `<!DOCTYPE html>
@@ -842,7 +1049,7 @@ function construirFacturaReservaDocumento(r, tipo, comprobante) {
 <head>
     <meta charset="UTF-8">
     <title>Factura ${num} - ${prefijo}-${r.id}</title>
-    <style>${estilosFacturaReservaHtml()}</style>
+    <style>${estilosFacturaReservaHtml(fmt)}</style>
 </head>
 <body>${inner}</body>
 </html>`;
@@ -961,15 +1168,19 @@ async function mostrarFacturaReservaEnModal(r, tipo, comprobante, autoImprimir) 
         alert('No se pudo abrir la vista de factura.');
         return;
     }
+    const formato = formatoImpresionReservaActivo();
     if (titulo) {
+        const etiquetaFmt = etiquetaFormatoImpresionReserva(formato);
         titulo.textContent =
             comprobante && comprobante.dian_estado === 'aceptado'
-                ? `Factura DIAN ${comprobante.numero || ''}`
-                : 'Vista previa — ticket 80 mm';
+                ? `Factura DIAN ${comprobante.numero || ''} · ${etiquetaFmt}`
+                : `Vista previa — ${etiquetaFmt}`;
     }
 
-    facturaReservaDocumentoCache = construirFacturaReservaDocumento(r, tipo, comprobante);
-    contenedor.innerHTML = construirFacturaReservaInnerHtml(r, tipo, comprobante);
+    facturaReservaDocumentoCache = construirFacturaReservaDocumento(r, tipo, comprobante, formato);
+    contenedor.innerHTML = construirFacturaReservaInnerHtml(r, tipo, comprobante, formato);
+    contenedor.classList.toggle('factura-preview-shell--carta', formato === 'carta');
+    contenedor.classList.toggle('factura-preview-shell--80mm', formato !== 'carta');
     modal.classList.add('active');
     await esperarImagenesEnContenedor(contenedor);
     if (autoImprimir) {
@@ -1229,11 +1440,10 @@ function reservaActivaEnFecha(r, ymd) {
         return ymd === ymdReservaIngreso(r);
     }
     if (String(r.estado) === 'Confirmada') {
-        return reservaEstaConCheckin(r);
+        return true;
     }
     if (String(r.estado) === 'Activa') {
-        if (reservaEstaConCheckin(r)) return true;
-        return ymd < ymdReservaIngreso(r);
+        return false;
     }
     return false;
 }
@@ -2271,6 +2481,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (fechaSalidaInput) {
                 fechaSalidaInput.min = fechaIngreso;
             }
+            actualizarOpcionesCheckinReservaForm();
+        });
+    }
+
+    const checkinAlReservarInput = document.getElementById('checkinAlReservar');
+    if (checkinAlReservarInput) {
+        checkinAlReservarInput.addEventListener('change', () => {
+            actualizarOpcionesCheckinReservaForm();
         });
     }
 
@@ -2290,6 +2508,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (fechaSalidaChin) {
                 fechaSalidaChin.min = v;
             }
+            actualizarOpcionesCheckinReservaChinForm();
+        });
+    }
+
+    const checkinAlReservarChinInput = document.getElementById('checkinAlReservarChin');
+    if (checkinAlReservarChinInput) {
+        checkinAlReservarChinInput.addEventListener('change', () => {
+            actualizarOpcionesCheckinReservaChinForm();
         });
     }
 
@@ -2571,6 +2797,11 @@ async function abrirReservaHabitacionDesdeCalendario(habitacionId, ymdClic) {
     aplicarFechasMinNuevaReservaHabitacion();
     const fs = document.getElementById('fechaSalida');
     if (fs) fs.min = ingreso;
+    const checkinAlReservar = document.getElementById('checkinAlReservar');
+    if (checkinAlReservar) {
+        checkinAlReservar.checked = false;
+    }
+    actualizarOpcionesCheckinReservaForm();
     document.getElementById('modalReserva').classList.add('active');
 }
 
@@ -2615,6 +2846,11 @@ async function abrirReservaChinchorroDesdeCalendario(chinchorroId, ymdClic) {
         fs.min = ingreso;
         fs.value = salida;
     }
+    const checkinAlReservarChin = document.getElementById('checkinAlReservarChin');
+    if (checkinAlReservarChin) {
+        checkinAlReservarChin.checked = false;
+    }
+    actualizarOpcionesCheckinReservaChinForm();
     document.getElementById('modalReservaChinchorro').classList.add('active');
 }
 
@@ -2776,6 +3012,49 @@ function rellenarCamposTemaDesdeHotel(data) {
         TemaHotel.aplicarLogo(document, data);
     }
     rellenarCamposFacturacionDian(data);
+    rellenarFormatoImpresionReserva(data);
+}
+
+function rellenarFormatoImpresionReserva(data) {
+    const fmt = formatoImpresionReservaNormalizado(data);
+    const el80 = document.getElementById('formatoImpresion80mm');
+    const elCarta = document.getElementById('formatoImpresionCarta');
+    if (el80) el80.checked = fmt === '80mm';
+    if (elCarta) elCarta.checked = fmt === 'carta';
+    const lectura = document.getElementById('formatoImpresionLectura');
+    if (lectura) {
+        lectura.textContent = `Formato actual: ${etiquetaFormatoImpresionReserva(fmt)}.`;
+    }
+}
+
+async function guardarFormatoImpresionReserva() {
+    if (!usuarioEsAdministrador()) {
+        alert('Solo el administrador puede cambiar el formato de impresión.');
+        return;
+    }
+    const seleccionado = document.querySelector('input[name="formatoImpresionReserva"]:checked');
+    const formato = seleccionado ? seleccionado.value : '80mm';
+    try {
+        const response = await fetchWithAuth(`${API_URL}/hotel/formato-impresion`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ formato_impresion_reserva: formato })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            alert(data.error || 'No se pudo guardar el formato de impresión.');
+            return;
+        }
+        datosHotelCache = {
+            ...(datosHotelCache || {}),
+            formato_impresion_reserva: data.formato_impresion_reserva || formato
+        };
+        rellenarFormatoImpresionReserva(datosHotelCache);
+        alert('Formato de impresión guardado correctamente.');
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión al guardar el formato de impresión.');
+    }
 }
 
 function datosFacturacionDianDesdeFormulario() {
@@ -3121,9 +3400,8 @@ function habitacionConReservaActivaHoy(hab) {
 }
 
 function reservaEstaConCheckin(r) {
-    if (!r || r.checkin_at == null || String(r.checkin_at).trim() === '') return false;
-    const est = String(r.estado || '');
-    return est === 'Confirmada' || est === 'Activa';
+    if (!r) return false;
+    return String(r.estado || '').trim() === 'Confirmada';
 }
 
 function reservaPendienteCheckin(r) {
@@ -3132,30 +3410,126 @@ function reservaPendienteCheckin(r) {
 
 function reservaYaConfirmadaEntrega(r) {
     if (!r) return false;
-    return String(r.estado || '').trim() === 'Confirmada';
+    const est = String(r.estado || '').trim();
+    if (est === 'Confirmada') return true;
+    return false;
 }
 
 function estadoEfectivoReservaHabitacion(r) {
     if (!r) return '';
     const est = String(r.estado || '').trim();
-    if (est === 'Confirmada') return est;
-    if (reservaPendienteConfirmacionEntrega(r)) {
-        return est === 'Pendiente de Check-in' ? 'Reservada (pendiente confirmación)' : est;
-    }
+    if (est === 'Confirmada' || est === 'Activa' || est === 'Pendiente de Check-in') return est;
     return est;
+}
+
+function tituloEstadoReservaHabitacion(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return '';
+    const est = String(r.estado || '').trim();
+    const hoy = fechaLocalYMD();
+    const ing = ymdReservaIngreso(r);
+    const fecha = new Date(`${ing}T12:00:00`).toLocaleDateString('es-ES');
+    if (est === 'Activa') {
+        if (ing > hoy) {
+            return `Activa: reserva creada. Check-in bloqueado hasta el ${fecha}`;
+        }
+        return 'Activa: check-in bloqueado hasta el día de llegada';
+    }
+    if (est === 'Pendiente de Check-in') {
+        if (ing > hoy) {
+            return `Pendiente de Check-in: reserva confirmada. A la espera de la llegada el ${fecha}`;
+        }
+        return 'Pendiente de Check-in: a la espera del ingreso del huésped';
+    }
+    return '';
 }
 
 /** Solo manual: huésped llegó y falta confirmar con el botón Sí/No. */
 function reservaPuedeCheckDeReserva(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    if (reservasCheckinBloqueadas.has(Number(r.id))) return false;
     return reservaPendienteConfirmacionEntrega(r);
 }
 
+function htmlCheckinConfirmadoReserva(r) {
+    const traza = textoTrazabilidadConfirmacionReserva(r);
+    const titulo = traza || 'Check-in confirmado';
+    return `<span class="estado-badge estado-disponible etiqueta-checkin-ok" title="${escapeHtmlCal(titulo)}">Check-in OK</span>`;
+}
+
+function reservaRequiereCheckinProgramado(r) {
+    if (!r || reservaYaConfirmadaEntrega(r)) return false;
+    const est = String(r.estado || '').trim();
+    if (est === 'Cancelada' || est === 'Finalizada' || reservaEsNoShow(r)) return false;
+    const hoy = fechaLocalYMD();
+    const ing = ymdReservaIngreso(r);
+    if (ing <= hoy) return false;
+    return est === 'Pendiente de Check-in';
+}
+
+function htmlCheckinBloqueadoReserva(r) {
+    const ing = ymdReservaIngreso(r);
+    const fecha = new Date(`${ing}T12:00:00`).toLocaleDateString('es-ES');
+    const hoy = fechaLocalYMD();
+    const titulo =
+        ing > hoy
+            ? `Check-in bloqueado hasta el ${fecha}`
+            : 'Activa: el check-in se habilita al pasar a Pendiente de Check-in el día de llegada';
+    return `<span class="estado-badge estado-disponible etiqueta-checkin-bloqueado" title="${escapeHtmlCal(titulo)}">Check-in bloqueado</span>`;
+}
+
 function htmlBotonConfirmarReserva(r) {
-    if (!reservaPuedeCheckDeReserva(r)) {
-        return '<span class="muted">—</span>';
+    if (reservaYaConfirmadaEntrega(r)) {
+        return htmlCheckinConfirmadoReserva(r);
     }
-    const id = Number(r.id);
-    return `<button type="button" class="btn-primary btn-small btn-confirmar-reserva" onclick="checkDeReserva(${id})" title="Confirmar entrega de la reserva al huésped">Confirmar Reserva</button>`;
+    if (reservaActivaConCheckinBloqueado(r)) {
+        return htmlCheckinBloqueadoReserva(r);
+    }
+    if (reservaPuedeCheckDeReserva(r)) {
+        const id = Number(r.id);
+        return `<button type="button" class="btn-primary btn-small btn-checkin-reserva" onclick="checkDeReserva(${id})" title="Confirmar check-in (Sí/No)">Check-in</button>`;
+    }
+    if (reservaRequiereCheckinProgramado(r)) {
+        const fecha = new Date(`${ymdReservaIngreso(r)}T12:00:00`).toLocaleDateString('es-ES');
+        return `<span class="estado-badge estado-reservada etiqueta-checkin-programado" title="Check-in disponible el día de ingreso">Check-in: ${escapeHtmlCal(fecha)}</span>`;
+    }
+    return '<span class="muted">—</span>';
+}
+
+function actualizarOpcionesCheckinReservaForm() {
+    const esEdicion = !!document.getElementById('idReservaEdicion')?.value?.trim();
+    const grupo = document.getElementById('grupoCheckinAlReservar');
+    const checkbox = document.getElementById('checkinAlReservar');
+    const hint = document.getElementById('hintCheckinAlReservar');
+    if (!grupo || !checkbox || !hint) return;
+
+    if (esEdicion) {
+        grupo.hidden = true;
+        checkbox.checked = false;
+        checkbox.disabled = true;
+        return;
+    }
+
+    grupo.hidden = false;
+    const hoy = fechaLocalYMD();
+    const ingreso = String(document.getElementById('fechaIngreso')?.value || '').slice(0, 10);
+
+    if (!ingreso) {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+        hint.innerHTML =
+            'Sin marcar: <strong>Activa</strong> (check-in bloqueado). Marcada: <strong>Pendiente de Check-in</strong> (amarillo). Elija la fecha de ingreso.';
+        return;
+    }
+
+    checkbox.disabled = false;
+    const fecha = new Date(`${ingreso}T12:00:00`).toLocaleDateString('es-ES');
+    if (checkbox.checked) {
+        hint.innerHTML =
+            `Quedará <strong>Pendiente de Check-in</strong> (amarillo): reserva confirmada, a la espera de la llegada el <strong>${escapeHtmlCal(fecha)}</strong>.`;
+        return;
+    }
+    hint.innerHTML =
+        `Quedará <strong>Activa</strong>: reserva creada con check-in bloqueado hasta el <strong>${escapeHtmlCal(fecha)}</strong>.`;
 }
 
 function reservaEsNoShow(r) {
@@ -3171,7 +3545,7 @@ function claseEstadoReservaHabitacion(estado) {
     const e = String(estado || '');
     if (e === 'Activa') return 'estado-disponible';
     if (e === 'Confirmada') return 'estado-disponible';
-    if (e === 'Pendiente de Check-in' || e.includes('pendiente confirmación')) return 'estado-reservada';
+    if (e === 'Reservada' || e === 'Pendiente de Check-in' || e.includes('pendiente confirmación')) return 'estado-reservada';
     if (e === 'No Presentado (No Show)') return 'estado-fuera-de-servicio';
     if (e === 'Finalizada') return 'estado-en-limpieza';
     return 'estado-ocupada';
@@ -3187,16 +3561,20 @@ function textoTrazabilidadConfirmacionReserva(r) {
 function htmlEstadoReservaHabitacion(r) {
     const est = estadoEfectivoReservaHabitacion(r);
     const clase = claseEstadoReservaHabitacion(est);
-    const traza = textoTrazabilidadConfirmacionReserva(r) || (est === 'Confirmada' && r.checkin_at
-        ? `Confirmada el ${new Date(r.checkin_at).toLocaleString('es-ES')}${r.confirmacion_usuario ? ` por ${r.confirmacion_usuario}` : ''}`
-        : '');
+    const traza =
+        textoTrazabilidadConfirmacionReserva(r) ||
+        tituloEstadoReservaHabitacion(r) ||
+        (est === 'Confirmada' && r.checkin_at
+            ? `Confirmada el ${new Date(r.checkin_at).toLocaleString('es-ES')}${r.confirmacion_usuario ? ` por ${r.confirmacion_usuario}` : ''}`
+            : '');
     const title = traza ? ` title="${escapeHtmlCal(traza)}"` : '';
     return `<span class="estado-badge ${clase}"${title}>${escapeHtmlCal(est)}</span>`;
 }
 
 function claseEstadoReservaChinchorro(estado) {
     const e = String(estado || '');
-    if (e === 'Activa') return 'estado-disponible';
+    if (e === 'Activa' || e === 'Confirmada') return 'estado-disponible';
+    if (e === 'Pendiente de Check-in') return 'estado-reservada';
     if (e === 'Finalizada') return 'estado-en-limpieza';
     if (e === 'Cancelada') return 'estado-fuera-de-servicio';
     return 'estado-ocupada';
@@ -3900,16 +4278,19 @@ function renderIndicadoresOcupacion() {
     `;
 }
 
-function reservasHabitacionAlojadasHoy() {
+function reservaVisibleEnAcomodacionDia(r) {
     const hoy = fechaLocalYMD();
+    const enAlojamiento =
+        reservaOcupadaEnFecha(r, hoy) ||
+        (reservaPendienteConfirmacionEntrega(r) &&
+            ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r)));
+    if (!enAlojamiento) return false;
+    return saldoReservaHabitacion(r) > 0.005;
+}
+
+function reservasHabitacionAlojadasHoy() {
     return reservas
-        .filter((r) => {
-            if (reservaOcupadaEnFecha(r, hoy)) return true;
-            if (reservaPendienteConfirmacionEntrega(r) && ymdEnRangoReserva(hoy, ymdReservaIngreso(r), ymdReservaSalida(r))) {
-                return true;
-            }
-            return false;
-        })
+        .filter((r) => reservaVisibleEnAcomodacionDia(r))
         .sort((a, b) =>
             etiquetaHabitacionReserva(a).localeCompare(etiquetaHabitacionReserva(b), 'es', { sensitivity: 'base' })
         );
@@ -3960,7 +4341,7 @@ function renderAcomodacionDelDia() {
                 <h3 class="subsection-title subsection-title--compact">Acomodación de hoy</h3>
                 <span class="acomodacion-dia-fecha muted">${escapeHtmlCal(fechaFmt)}</span>
             </div>
-            <p class="acomodacion-dia-vacio">No hay huéspedes alojados hoy en habitaciones.</p>
+            <p class="acomodacion-dia-vacio">No hay huéspedes con cobro pendiente hoy. Las reservas pagadas aparecen en el listado de abajo.</p>
         `;
         return;
     }
@@ -4009,8 +4390,7 @@ function renderAcomodacionDelDia() {
             <span class="acomodacion-dia-fecha muted">${escapeHtmlCal(fechaFmt)}</span>
         </div>
         <p class="acomodacion-dia-intro">
-            Huéspedes alojados hoy: total de la estadía y saldo pendiente de cada reserva.
-            El registro unificado de todas las reservas continúa en la misma pestaña, justo debajo.
+            Huéspedes alojados hoy con saldo por cobrar. Al pagar el total, la reserva sale de esta tabla y queda en el registro unificado de abajo.
         </p>
         <div class="acomodacion-dia-chips">
             <span class="ocupacion-chip chip-total"><span class="chip-label">Habitaciones</span><span class="chip-value">${lista.length}</span></span>
@@ -4563,6 +4943,12 @@ async function mostrarModalReservaChinchorro() {
     if (fs) {
         fs.min = fi && fi.value ? fi.value : hoy;
     }
+    const checkinAlReservarChin = document.getElementById('checkinAlReservarChin');
+    if (checkinAlReservarChin) {
+        checkinAlReservarChin.checked = false;
+        checkinAlReservarChin.disabled = true;
+    }
+    actualizarOpcionesCheckinReservaChinForm();
     document.getElementById('modalReservaChinchorro').classList.add('active');
 }
 
@@ -4675,6 +5061,8 @@ async function guardarReservaChinchorro(event) {
         }
         montoAbonoEnviarCh = totalEstCh;
     }
+    let confirmarCheckinAlReservarChin = false;
+
     try {
         let response;
         if (idEd) {
@@ -4684,28 +5072,67 @@ async function guardarReservaChinchorro(event) {
                 body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia })
             });
         } else {
+            const checkinInputChin = document.getElementById('checkinAlReservarChin');
+            confirmarCheckinAlReservarChin =
+                !!(checkinInputChin && !checkinInputChin.disabled && checkinInputChin.checked === true);
             response = await fetchWithAuth(`${API_URL}/reservas-chinchorros`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chinchorro_id, huesped_id, adultos, ninos, tipo_requerido, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_dia, monto_abonado: montoAbonoEnviarCh })
+                body: JSON.stringify({
+                    chinchorro_id,
+                    huesped_id,
+                    adultos,
+                    ninos,
+                    tipo_requerido,
+                    metodo_pago,
+                    observaciones,
+                    fecha_ingreso,
+                    fecha_salida,
+                    tarifa_dia,
+                    monto_abonado: montoAbonoEnviarCh,
+                    confirmar_checkin_al_reservar: confirmarCheckinAlReservarChin
+                })
             });
         }
         if (response.ok) {
+            const data = idEd ? null : await response.json().catch(() => ({}));
             cerrarModal('modalReservaChinchorro');
-            cargarReservasChinchorros();
+            await cargarReservasChinchorros();
             cargarChinchorros();
             actualizarCalendarioDisponibilidad();
-            if (!idEd && totalEstCh > 0 && montoAbonoEnviarCh >= totalEstCh - 0.005) {
-                alert('Reserva creada correctamente. Pago completo registrado.');
-            } else if (!idEd && montoAbonoEnviarCh > 0) {
-                alert(`Reserva creada correctamente. Abono inicial: ${formatoMoneda(montoAbonoEnviarCh)}.`);
+            if (!idEd) {
+                const fechaLlegada = new Date(`${fecha_ingreso}T12:00:00`).toLocaleDateString('es-ES');
+                const estadoCreado = data && data.estado ? String(data.estado) : 'Activa';
+                if (confirmarCheckinAlReservarChin && estadoCreado === 'Pendiente de Check-in') {
+                    alert(
+                        `Reserva de chinchorro creada como Pendiente de Check-in. Fecha de llegada: ${fechaLlegada}. A la espera del huésped.`
+                    );
+                    if (data.id) {
+                        irAListadoReservas(data.id, { filtroEstado: 'Pendiente de Check-in', tipo: 'chinchorro' });
+                    }
+                } else if (totalEstCh > 0 && montoAbonoEnviarCh >= totalEstCh - 0.005) {
+                    alert(
+                        `Reserva de chinchorro creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegada}. Pago completo registrado. Check-in bloqueado hasta esa fecha.`
+                    );
+                } else if (montoAbonoEnviarCh > 0) {
+                    alert(
+                        `Reserva de chinchorro creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegada}. Abono inicial: ${formatoMoneda(montoAbonoEnviarCh)}. Check-in bloqueado hasta esa fecha.`
+                    );
+                } else {
+                    alert(
+                        `Reserva de chinchorro creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegada}. Check-in bloqueado hasta esa fecha.`
+                    );
+                }
+                if (data && data.id && estadoCreado === 'Activa') {
+                    irAListadoReservas(data.id, { filtroEstado: 'Activa', tipo: 'chinchorro' });
+                }
             }
         } else {
             const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo guardar.');
             alert('Error: ' + msg);
         }
     } catch (error) {
-        alert('Error al reservar chinchorro');
+        alert('Error al reservar chinchorro: ' + (error && error.message ? error.message : 'intente de nuevo'));
         console.error(error);
     }
 }
@@ -5038,6 +5465,7 @@ async function cargarReservas() {
     try {
         const response = await fetchWithAuth(`${API_URL}/reservas`);
         reservas = await response.json();
+        sincronizarCheckinsBloqueadosDesdeReservas();
         renderModuloReservas();
         mostrarHabitaciones();
         actualizarSelectsReserva();
@@ -5149,13 +5577,60 @@ function establecerModoModalReserva(esEdicion) {
     if (grupoAbono) {
         grupoAbono.hidden = esEdicion;
     }
+    actualizarOpcionesCheckinReservaForm();
 }
 
 function establecerModoModalReservaChin(esEdicion) {
     const grupoAbono = document.getElementById('grupoAbonoInicialReservaChin');
+    const grupoCheckin = document.getElementById('grupoCheckinAlReservarChin');
+    const checkbox = document.getElementById('checkinAlReservarChin');
     if (grupoAbono) {
         grupoAbono.hidden = esEdicion;
     }
+    if (grupoCheckin) {
+        grupoCheckin.hidden = esEdicion;
+    }
+    if (checkbox) {
+        checkbox.checked = false;
+        checkbox.disabled = esEdicion;
+    }
+    actualizarOpcionesCheckinReservaChinForm();
+}
+
+function actualizarOpcionesCheckinReservaChinForm() {
+    const esEdicion = !!document.getElementById('idReservaChinchorroEdicion')?.value?.trim();
+    const grupo = document.getElementById('grupoCheckinAlReservarChin');
+    const checkbox = document.getElementById('checkinAlReservarChin');
+    const hint = document.getElementById('hintCheckinAlReservarChin');
+    if (!grupo || !checkbox || !hint) return;
+
+    if (esEdicion) {
+        grupo.hidden = true;
+        checkbox.checked = false;
+        checkbox.disabled = true;
+        return;
+    }
+
+    grupo.hidden = false;
+    const ingreso = String(document.getElementById('fechaIngresoChin')?.value || '').slice(0, 10);
+
+    if (!ingreso) {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+        hint.innerHTML =
+            'Sin marcar: <strong>Activa</strong> (check-in bloqueado). Marcada: <strong>Pendiente de Check-in</strong> (amarillo). Elija la fecha de inicio.';
+        return;
+    }
+
+    checkbox.disabled = false;
+    const fecha = new Date(`${ingreso}T12:00:00`).toLocaleDateString('es-ES');
+    if (checkbox.checked) {
+        hint.innerHTML =
+            `Quedará <strong>Pendiente de Check-in</strong> (amarillo): reserva confirmada, a la espera de la llegada el <strong>${escapeHtmlCal(fecha)}</strong>.`;
+        return;
+    }
+    hint.innerHTML =
+        `Quedará <strong>Activa</strong>: reserva creada con check-in bloqueado hasta el <strong>${escapeHtmlCal(fecha)}</strong>.`;
 }
 
 async function mostrarModalReserva() {
@@ -5172,6 +5647,12 @@ async function mostrarModalReserva() {
     establecerModoModalReserva(false);
     actualizarSelectsReserva();
     aplicarFechasMinNuevaReservaHabitacion();
+    const checkinAlReservar = document.getElementById('checkinAlReservar');
+    if (checkinAlReservar) {
+        checkinAlReservar.checked = false;
+        checkinAlReservar.disabled = true;
+    }
+    actualizarOpcionesCheckinReservaForm();
     document.getElementById('modalReserva').classList.add('active');
 }
 
@@ -5288,6 +5769,8 @@ async function guardarReserva(event) {
         montoAbonoEnviar = totalEst;
     }
 
+    let confirmarCheckinAlReservar = false;
+
     try {
         let response;
         if (idEdicion) {
@@ -5298,24 +5781,64 @@ async function guardarReserva(event) {
                 body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche })
             });
         } else {
+            const checkinInput = document.getElementById('checkinAlReservar');
+            confirmarCheckinAlReservar =
+                !!(checkinInput && !checkinInput.disabled && checkinInput.checked === true);
             response = await fetchWithAuth(`${API_URL}/reservas`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ habitacion_id, huesped_id, adultos, ninos, tipo_habitacion_requerida, metodo_pago, observaciones, fecha_ingreso, fecha_salida, tarifa_noche, monto_abonado: montoAbonoEnviar })
+                body: JSON.stringify({
+                    habitacion_id,
+                    huesped_id,
+                    adultos,
+                    ninos,
+                    tipo_habitacion_requerida,
+                    metodo_pago,
+                    observaciones,
+                    fecha_ingreso,
+                    fecha_salida,
+                    tarifa_noche,
+                    monto_abonado: montoAbonoEnviar,
+                    confirmar_checkin_al_reservar: confirmarCheckinAlReservar
+                })
             });
         }
 
         if (response.ok) {
+            const data = idEdicion ? null : await response.json().catch(() => ({}));
             cerrarModal('modalReserva');
-            cargarReservas();
+            await cargarReservas();
             cargarHabitaciones();
             actualizarCalendarioDisponibilidad();
             if (idEdicion) {
                 alert('Cambios guardados correctamente.');
-            } else if (totalEst > 0 && montoAbonoEnviar >= totalEst - 0.005) {
-                alert('Reserva creada correctamente. Pago completo registrado.');
-            } else if (montoAbonoEnviar > 0) {
-                alert(`Reserva creada correctamente. Abono inicial: ${formatoMoneda(montoAbonoEnviar)}.`);
+            } else if (confirmarCheckinAlReservar && data && String(data.estado) === 'Pendiente de Check-in') {
+                const fechaLlegadaPend = new Date(`${fecha_ingreso}T12:00:00`).toLocaleDateString('es-ES');
+                alert(
+                    `Reserva creada como Pendiente de Check-in. Fecha de llegada: ${fechaLlegadaPend}. A la espera del huésped.`
+                );
+                if (data.id) {
+                    irAListadoReservas(data.id, { filtroEstado: 'Pendiente de Check-in' });
+                }
+            } else {
+                const fechaLlegadaActiva = new Date(`${fecha_ingreso}T12:00:00`).toLocaleDateString('es-ES');
+                const estadoCreado = data && data.estado ? String(data.estado) : 'Activa';
+                if (totalEst > 0 && montoAbonoEnviar >= totalEst - 0.005) {
+                    alert(
+                        `Reserva creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegadaActiva}. Pago completo registrado. Check-in bloqueado hasta esa fecha.`
+                    );
+                } else if (montoAbonoEnviar > 0) {
+                    alert(
+                        `Reserva creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegadaActiva}. Abono inicial: ${formatoMoneda(montoAbonoEnviar)}. Check-in bloqueado hasta esa fecha.`
+                    );
+                } else {
+                    alert(
+                        `Reserva creada como ${estadoCreado}. Fecha de llegada: ${fechaLlegadaActiva}. Check-in bloqueado hasta esa fecha.`
+                    );
+                }
+                if (data && data.id && estadoCreado === 'Activa') {
+                    irAListadoReservas(data.id, { filtroEstado: 'Activa' });
+                }
             }
         } else {
             const fallback = idEdicion ? 'No se pudo actualizar la reserva.' : 'No se pudo crear la reserva.';
@@ -5329,19 +5852,59 @@ async function guardarReserva(event) {
 }
 
 let confirmarCheckinResolver = null;
+const reservasCheckinBloqueadas = new Set();
 
-function preguntarCheckDeReserva() {
+function bloquearCheckinReserva(id) {
+    reservasCheckinBloqueadas.add(Number(id));
+}
+
+function aplicarCheckinConfirmadoEnLista(id, reservaActualizada) {
+    bloquearCheckinReserva(id);
+    const idx = reservas.findIndex((x) => Number(x.id) === Number(id));
+    if (idx >= 0 && reservaActualizada) {
+        reservas[idx] = { ...reservas[idx], ...reservaActualizada };
+    } else if (idx >= 0) {
+        reservas[idx] = {
+            ...reservas[idx],
+            estado: 'Confirmada',
+            checkin_at: reservas[idx].checkin_at || new Date().toISOString()
+        };
+    }
+    renderModuloReservas();
+}
+
+function sincronizarCheckinsBloqueadosDesdeReservas() {
+    reservas.forEach((r) => {
+        if (reservaYaConfirmadaEntrega(r)) {
+            bloquearCheckinReserva(r.id);
+        }
+    });
+}
+
+function preguntarCheckInReserva(id) {
     return new Promise((resolve) => {
         confirmarCheckinResolver = resolve;
+        const r = reservas.find((x) => Number(x.id) === Number(id));
         const modal = document.getElementById('modalConfirmarCheckin');
-        const titulo = modal && modal.querySelector('h2');
+        const titulo = document.getElementById('tituloModalConfirmarCheckin');
         const texto = document.getElementById('textoModalConfirmarCheckin');
-        if (titulo) titulo.textContent = 'Confirmar Reserva';
-        if (texto) {
-            texto.textContent = '¿Está seguro de que desea confirmar esta reserva?';
+        const detalle = document.getElementById('detalleModalConfirmarCheckin');
+        const huesped = r
+            ? `${r.huesped_nombre || ''} ${r.huesped_apellido || ''}`.trim() || 'Huésped'
+            : 'Huésped';
+        const habitacion = r ? etiquetaHabitacionReserva(r) : 'Habitación';
+        if (titulo) titulo.textContent = 'Check-in de reserva';
+        if (texto) texto.textContent = '¿Confirma el check-in de esta reserva?';
+        if (detalle) {
+            detalle.textContent = `${huesped} · ${habitacion}`;
+            detalle.hidden = !r;
         }
         if (modal) modal.classList.add('active');
     });
+}
+
+function preguntarCheckDeReserva(id) {
+    return preguntarCheckInReserva(id);
 }
 
 function responderConfirmarCheckin(si) {
@@ -5353,14 +5916,15 @@ function responderConfirmarCheckin(si) {
     }
 }
 
-function irAListadoReservasTrasConfirmar(idReserva) {
+function irAListadoReservas(idReserva, opciones = {}) {
+    const { filtroEstado = null, tipo = null } = opciones;
     const tabBtn = document.getElementById('tabBtnReservas');
     if (tabBtn) {
         mostrarSeccion('reservas', tabBtn);
     }
     const filtro = document.getElementById('filtroEstadoReservas');
-    if (filtro) {
-        filtro.value = 'Confirmada';
+    if (filtro && filtroEstado !== null) {
+        filtro.value = filtroEstado;
     }
     renderModuloReservas();
     const bloque = document.querySelector('.reservas-registro-unificado');
@@ -5368,8 +5932,9 @@ function irAListadoReservasTrasConfirmar(idReserva) {
         bloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     window.setTimeout(() => {
+        const tipoSel = tipo ? `[data-reserva-tipo="${tipo}"]` : '';
         const fila = document.querySelector(
-            `#tablaReservasUnificada tr[data-reserva-id="${Number(idReserva)}"][data-reserva-tipo="habitacion"]`
+            `#tablaReservasUnificada tr[data-reserva-id="${Number(idReserva)}"]${tipoSel}`
         );
         if (fila) {
             fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -5379,27 +5944,42 @@ function irAListadoReservasTrasConfirmar(idReserva) {
     }, 350);
 }
 
+function irAListadoReservasTrasConfirmar(idReserva) {
+    irAListadoReservas(idReserva, { filtroEstado: 'Confirmada' });
+}
+
+function irAListadoReservasTrasPago(idReserva) {
+    irAListadoReservas(idReserva);
+}
+
 async function checkDeReserva(id) {
-    const confirmado = await preguntarCheckDeReserva();
+    const idNum = Number(id);
+    if (reservasCheckinBloqueadas.has(idNum)) {
+        return;
+    }
+    const confirmado = await preguntarCheckInReserva(idNum);
     if (!confirmado) {
         return;
     }
     try {
-        const response = await fetchWithAuth(`${API_URL}/reservas/${id}/checkin`, {
+        const response = await fetchWithAuth(`${API_URL}/reservas/${idNum}/checkin`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
         if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            aplicarCheckinConfirmadoEnLista(idNum, data.reserva);
             await cargarReservas();
+            sincronizarCheckinsBloqueadosDesdeReservas();
             cargarHabitaciones();
             actualizarCalendarioDisponibilidad();
-            irAListadoReservasTrasConfirmar(id);
+            irAListadoReservasTrasConfirmar(idNum);
         } else {
-            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo confirmar la reserva.');
+            const msg = await mensajeErrorRespuestaFetch(response, 'No se pudo confirmar el check-in.');
             alert('Error: ' + msg);
         }
     } catch (error) {
-        alert('Error al confirmar la reserva');
+        alert('Error al confirmar el check-in');
         console.error(error);
     }
 }
@@ -5896,11 +6476,15 @@ async function confirmarAbonoReserva(event) {
         if (response.ok) {
             const data = await response.json().catch(() => ({}));
             cerrarModal('modalAbonoReserva');
+            const saldoNum = data.saldo != null ? Number(data.saldo) : null;
             if (tipo === 'chinchorro') {
-                cargarReservasChinchorros();
+                await cargarReservasChinchorros();
             } else {
-                cargarReservas();
+                await cargarReservas();
                 cargarHabitaciones();
+                if (saldoNum != null && saldoNum <= 0.005) {
+                    irAListadoReservasTrasPago(id);
+                }
             }
             renderIndicadoresFinanciero();
             const nuevoAbonado = data.monto_abonado != null ? formatoMoneda(data.monto_abonado) : '';
@@ -5946,10 +6530,11 @@ async function totalizarReservaPago(tipo, id) {
         });
         if (response.ok) {
             if (esChin) {
-                cargarReservasChinchorros();
+                await cargarReservasChinchorros();
             } else {
-                cargarReservas();
+                await cargarReservas();
                 cargarHabitaciones();
+                irAListadoReservasTrasPago(id);
             }
             renderIndicadoresFinanciero();
             alert('Reserva totalizada correctamente.');
