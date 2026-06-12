@@ -2240,7 +2240,374 @@ function renderListadoConsolidadoReservas() {
         .join('');
 }
 
+const gestionCharts = {};
+
+const GESTION_CHART_COLORS = {
+    blue: '#2563eb',
+    green: '#16a34a',
+    red: '#ef4444',
+    orange: '#ea580c',
+    purple: '#7c3aed',
+    indigo: '#4f46e5',
+    teal: '#0d9488',
+    amber: '#d97706',
+    slate: '#94a3b8',
+    rose: '#e11d48'
+};
+
+function ultimosNDiasYMD(n, hastaYmd) {
+    const hasta = hastaYmd || fechaLocalYMD();
+    const out = [];
+    const fin = new Date(`${hasta}T12:00:00`);
+    for (let i = n - 1; i >= 0; i--) {
+        const cur = new Date(fin);
+        cur.setDate(cur.getDate() - i);
+        out.push(fechaLocalYMD(cur));
+    }
+    return out;
+}
+
+function etiquetaDiaCortaGestion(ymd) {
+    return new Date(`${ymd}T12:00:00`).toLocaleDateString('es-ES', {
+        weekday: 'short',
+        day: 'numeric'
+    });
+}
+
+function conteoReservasPorEstadoMap() {
+    const map = new Map();
+    const add = (est) => {
+        const e = String(est || 'Sin estado').trim() || 'Sin estado';
+        map.set(e, (map.get(e) || 0) + 1);
+    };
+    reservas.forEach((r) => add(r.estado));
+    reservasChinchorros.forEach((r) => add(r.estado));
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+}
+
+function colorEstadoReservaChart(estado) {
+    const e = String(estado || '').toLowerCase();
+    if (e === 'activa') return GESTION_CHART_COLORS.green;
+    if (e === 'confirmada') return GESTION_CHART_COLORS.blue;
+    if (e.includes('pendiente')) return GESTION_CHART_COLORS.amber;
+    if (e === 'finalizada') return GESTION_CHART_COLORS.slate;
+    if (e === 'cancelada') return GESTION_CHART_COLORS.red;
+    if (e.includes('no show') || e.includes('no presentado')) return GESTION_CHART_COLORS.rose;
+    return GESTION_CHART_COLORS.indigo;
+}
+
+function destruirGestionCharts() {
+    Object.keys(gestionCharts).forEach((id) => {
+        if (gestionCharts[id]) {
+            gestionCharts[id].destroy();
+            gestionCharts[id] = null;
+        }
+    });
+}
+
+function crearGestionChart(id, config) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return null;
+    if (gestionCharts[id]) {
+        gestionCharts[id].destroy();
+    }
+    gestionCharts[id] = new Chart(canvas.getContext('2d'), config);
+    return gestionCharts[id];
+}
+
+function opcionesBaseGestionChart(extra = {}) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: { boxWidth: 12, font: { size: 11 } }
+            }
+        },
+        ...extra
+    };
+}
+
+function renderGestionChartsKpiRow() {
+    const row = document.getElementById('gestionChartsKpiRow');
+    if (!row) return;
+
+    const hoy = fechaLocalYMD();
+    const semIni = inicioSemanaActualYMD(hoy);
+    const semFin = finSemanaActualYMD(hoy);
+    const diasSemana = listarDiasEntreYMD(semIni, hoy > semFin ? semFin : hoy);
+    const { primero, ultimo } = rangoMesActualYMD();
+    const diasMes = listarDiasEntreYMD(primero, hoy > ultimo ? ultimo : hoy);
+    const { ocupadas, disponibles, total } = conteoOcupacionHabitacionesEfectiva();
+    const pctHab = total > 0 ? Math.round((ocupadas / total) * 100) : 0;
+    const reservasActivas =
+        reservas.filter((r) => reservaEsActivaOperativa(r)).length +
+        reservasChinchorros.filter((r) => r.estado === 'Activa').length;
+
+    const items = [
+        { label: 'Ocupación global', value: `${ocupacionPorcentajeEnFecha(hoy)}%`, sub: 'Habitaciones + chinchorros', cls: 'gestion-mini-kpi--blue' },
+        { label: 'Ocupación habitaciones', value: `${pctHab}%`, sub: `${ocupadas} de ${total} ocupadas`, cls: 'gestion-mini-kpi--red' },
+        { label: 'Disponibles ahora', value: String(disponibles), sub: 'Habitaciones libres', cls: 'gestion-mini-kpi--green' },
+        { label: 'Personas hoy', value: String(personasHospedadasEnFecha(hoy)), sub: 'Huéspedes alojados', cls: 'gestion-mini-kpi--teal' },
+        { label: 'Ingresos hoy', value: formatoMoneda(ingresosDelDia(hoy)), sub: 'Tarifa diaria estimada', cls: 'gestion-mini-kpi--orange' },
+        { label: 'Ingresos mes', value: formatoMoneda(ingresosMesActual()), sub: 'Acumulado del mes', cls: 'gestion-mini-kpi--purple' },
+        { label: 'Ocup. semanal', value: `${ocupacionPromedioEnDias(diasSemana)}%`, sub: 'Promedio de la semana', cls: 'gestion-mini-kpi--indigo' },
+        { label: 'Reservas activas', value: String(reservasActivas), sub: 'En curso o pendientes', cls: 'gestion-mini-kpi--slate' }
+    ];
+
+    row.innerHTML = items
+        .map(
+            (it) => `
+        <article class="gestion-mini-kpi ${it.cls}">
+            <p class="gestion-mini-kpi-label">${escapeHtmlCal(it.label)}</p>
+            <p class="gestion-mini-kpi-valor">${escapeHtmlCal(it.value)}</p>
+            <p class="gestion-mini-kpi-sub">${escapeHtmlCal(it.sub)}</p>
+        </article>`
+        )
+        .join('');
+}
+
+function renderGestionOperativaCharts() {
+    const aviso = document.getElementById('gestionChartsAviso');
+    if (typeof Chart === 'undefined') {
+        destruirGestionCharts();
+        if (aviso) {
+            aviso.hidden = false;
+            aviso.textContent =
+                'No se pudo cargar la librería de gráficos. Verifique su conexión a internet y pulse «Actualizar módulo».';
+        }
+        return;
+    }
+    if (aviso) aviso.hidden = true;
+
+    renderGestionChartsKpiRow();
+
+    const hoy = fechaLocalYMD();
+    const dias14 = ultimosNDiasYMD(14, hoy);
+    const labels14 = dias14.map(etiquetaDiaCortaGestion);
+    const ocupacionSerie = dias14.map((ymd) => ocupacionPorcentajeEnFecha(ymd));
+    const ingresosSerie = dias14.map((ymd) => ingresosDelDia(ymd));
+    const pctGlobal = ocupacionPorcentajeEnFecha(hoy);
+
+    crearGestionChart('chartGaugeOcupacion', {
+        type: 'doughnut',
+        data: {
+            labels: ['Ocupado', 'Libre'],
+            datasets: [
+                {
+                    data: [pctGlobal, Math.max(0, 100 - pctGlobal)],
+                    backgroundColor: [GESTION_CHART_COLORS.blue, '#e8ecf1'],
+                    borderWidth: 0,
+                    circumference: 270,
+                    rotation: 225
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            cutout: '72%',
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+                gestionGauge: { valor: `${pctGlobal}%` }
+            }
+        }),
+        plugins: [
+            {
+                id: 'gestionGauge',
+                afterDraw(chart) {
+                    const valor = chart.options.plugins.gestionGauge?.valor || '';
+                    const { ctx, chartArea } = chart;
+                    if (!chartArea) return;
+                    ctx.save();
+                    ctx.font = 'bold 1.6rem system-ui, sans-serif';
+                    ctx.fillStyle = GESTION_CHART_COLORS.blue;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(valor, (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2 + 6);
+                    ctx.font = '600 0.72rem system-ui, sans-serif';
+                    ctx.fillStyle = '#64748b';
+                    ctx.fillText('ocupación', (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2 + 28);
+                    ctx.restore();
+                }
+            }
+        ]
+    });
+
+    const hab = conteoOcupacionHabitacionesEfectiva();
+    crearGestionChart('chartEstadoHabitaciones', {
+        type: 'doughnut',
+        data: {
+            labels: ['Disponibles', 'Ocupadas', 'No disponibles'],
+            datasets: [
+                {
+                    data: [hab.disponibles, hab.ocupadas, hab.otros],
+                    backgroundColor: [GESTION_CHART_COLORS.green, GESTION_CHART_COLORS.red, GESTION_CHART_COLORS.slate],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            plugins: { legend: { position: 'bottom' } }
+        })
+    });
+
+    const estados = conteoReservasPorEstadoMap();
+    crearGestionChart('chartReservasEstado', {
+        type: 'bar',
+        data: {
+            labels: estados.map(([e]) => e),
+            datasets: [
+                {
+                    label: 'Reservas',
+                    data: estados.map(([, n]) => n),
+                    backgroundColor: estados.map(([e]) => colorEstadoReservaChart(e)),
+                    borderRadius: 6,
+                    maxBarThickness: 42
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, precision: 0 }
+                }
+            },
+            plugins: { legend: { display: false } }
+        })
+    });
+
+    crearGestionChart('chartTendenciaOcupacion', {
+        type: 'line',
+        data: {
+            labels: labels14,
+            datasets: [
+                {
+                    label: 'Ocupación %',
+                    data: ocupacionSerie,
+                    borderColor: GESTION_CHART_COLORS.blue,
+                    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointHoverRadius: 5
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { callback: (v) => `${v}%` }
+                }
+            }
+        })
+    });
+
+    crearGestionChart('chartTendenciaIngresos', {
+        type: 'bar',
+        data: {
+            labels: labels14,
+            datasets: [
+                {
+                    label: 'Ingresos estimados',
+                    data: ingresosSerie,
+                    backgroundColor: 'rgba(22, 163, 74, 0.75)',
+                    borderColor: GESTION_CHART_COLORS.green,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    maxBarThickness: 28
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (v) => formatoMoneda(v)
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => ` ${formatoMoneda(ctx.parsed.y)}`
+                    }
+                }
+            }
+        })
+    });
+
+    const filasH = ingresosPorHabitacionMesMap().filter((f) => f.total > 0);
+    const filasC = ingresosPorChinchorroMesMap().filter((f) => f.total > 0);
+
+    crearGestionChart('chartIngresosHabitaciones', {
+        type: 'bar',
+        data: {
+            labels: filasH.length ? filasH.map((f) => f.label.replace(/^Habitación\s*/i, 'Hab. ')) : ['Sin datos'],
+            datasets: [
+                {
+                    label: 'Ingresos mes',
+                    data: filasH.length ? filasH.map((f) => f.total) : [0],
+                    backgroundColor: GESTION_CHART_COLORS.indigo,
+                    borderRadius: 6,
+                    maxBarThickness: 36
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: (v) => formatoMoneda(v) }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => ` ${formatoMoneda(ctx.parsed.y)}` }
+                }
+            }
+        })
+    });
+
+    crearGestionChart('chartIngresosChinchorros', {
+        type: 'bar',
+        data: {
+            labels: filasC.length ? filasC.map((f) => f.label.replace(/^Chinchorro\s*/i, 'Chin. ')) : ['Sin datos'],
+            datasets: [
+                {
+                    label: 'Ingresos mes',
+                    data: filasC.length ? filasC.map((f) => f.total) : [0],
+                    backgroundColor: GESTION_CHART_COLORS.teal,
+                    borderRadius: 6,
+                    maxBarThickness: 36
+                }
+            ]
+        },
+        options: opcionesBaseGestionChart({
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: (v) => formatoMoneda(v) }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => ` ${formatoMoneda(ctx.parsed.y)}` }
+                }
+            }
+        })
+    });
+}
+
 function renderGestionOperativa() {
+    renderGestionOperativaCharts();
     renderAcomodacionOperativa();
     renderOcupacionOperativa();
     renderIngresosActivasOperativa();

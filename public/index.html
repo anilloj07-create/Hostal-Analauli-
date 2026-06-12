@@ -217,8 +217,61 @@
             <p class="section-intro">
                 Consulte la <strong>acomodación diaria</strong>, visualice la <strong>ocupación</strong> de habitaciones,
                 estime los <strong>ingresos de reservas activas</strong> y revise el <strong>listado consolidado</strong>
-                de reservas para apoyar la gestión operativa, comercial y financiera del establecimiento.
+                de reservas. Los <strong>tableros y gráficos</strong> facilitan el análisis, seguimiento y toma de decisiones.
             </p>
+
+            <article class="gestion-bloque gestion-bloque--ancho gestion-tablero" id="bloqueTableroControl">
+                <h3 class="subsection-title">📊 Tablero de control e indicadores</h3>
+                <p class="gestion-tablero-intro muted">
+                    Métricas de desempeño, tendencias de ocupación e ingresos y distribución operativa del establecimiento.
+                </p>
+                <div id="gestionChartsAviso" class="gestion-charts-aviso" hidden></div>
+                <div class="gestion-charts-kpi-row" id="gestionChartsKpiRow" aria-live="polite"></div>
+                <div class="gestion-charts-grid">
+                    <div class="gestion-chart-card gestion-chart-card--gauge">
+                        <h4 class="gestion-chart-titulo">Ocupación global hoy</h4>
+                        <div class="gestion-chart-canvas-wrap gestion-chart-canvas-wrap--gauge">
+                            <canvas id="chartGaugeOcupacion" aria-label="Gráfico de ocupación global"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card">
+                        <h4 class="gestion-chart-titulo">Estado de habitaciones</h4>
+                        <div class="gestion-chart-canvas-wrap">
+                            <canvas id="chartEstadoHabitaciones" aria-label="Distribución de habitaciones"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card">
+                        <h4 class="gestion-chart-titulo">Reservas por estado</h4>
+                        <div class="gestion-chart-canvas-wrap">
+                            <canvas id="chartReservasEstado" aria-label="Reservas agrupadas por estado"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card gestion-chart-card--wide">
+                        <h4 class="gestion-chart-titulo">Tendencia de ocupación (últimos 14 días)</h4>
+                        <div class="gestion-chart-canvas-wrap gestion-chart-canvas-wrap--trend">
+                            <canvas id="chartTendenciaOcupacion" aria-label="Tendencia de ocupación"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card gestion-chart-card--wide">
+                        <h4 class="gestion-chart-titulo">Tendencia de ingresos estimados (últimos 14 días)</h4>
+                        <div class="gestion-chart-canvas-wrap gestion-chart-canvas-wrap--trend">
+                            <canvas id="chartTendenciaIngresos" aria-label="Tendencia de ingresos"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card gestion-chart-card--wide">
+                        <h4 class="gestion-chart-titulo">Ingresos del mes por habitación</h4>
+                        <div class="gestion-chart-canvas-wrap gestion-chart-canvas-wrap--bar">
+                            <canvas id="chartIngresosHabitaciones" aria-label="Ingresos por habitación"></canvas>
+                        </div>
+                    </div>
+                    <div class="gestion-chart-card gestion-chart-card--wide">
+                        <h4 class="gestion-chart-titulo">Ingresos del mes por chinchorro</h4>
+                        <div class="gestion-chart-canvas-wrap gestion-chart-canvas-wrap--bar">
+                            <canvas id="chartIngresosChinchorros" aria-label="Ingresos por chinchorro"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </article>
 
             <div class="gestion-modulo-grid">
                 <article class="gestion-bloque" id="bloqueAcomodacionDiaria">
@@ -1223,6 +1276,7 @@
     </div>
 
     <script src="theme-apply.js?v=7"></script>
-    <script src="app.js?v=83"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="app.js?v=84"></script>
 </body>
 </html>

@@ -761,6 +761,109 @@ body::before {
     margin-top: 8px;
 }
 
+.gestion-tablero-intro {
+    margin: 0 0 14px;
+    font-size: 0.92rem;
+}
+
+.gestion-charts-aviso {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-size: 0.9rem;
+}
+
+.gestion-charts-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.gestion-mini-kpi {
+    background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+    border: 1px solid #e8ecf1;
+    border-radius: 12px;
+    padding: 12px 14px;
+    border-top: 3px solid #cbd5e1;
+}
+
+.gestion-mini-kpi-label {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.gestion-mini-kpi-valor {
+    margin: 0;
+    font-size: clamp(1.1rem, 2.2vw, 1.45rem);
+    font-weight: 800;
+    line-height: 1.1;
+    color: #0f172a;
+}
+
+.gestion-mini-kpi-sub {
+    margin: 6px 0 0;
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+.gestion-mini-kpi--blue { border-top-color: #2563eb; }
+.gestion-mini-kpi--red { border-top-color: #ef4444; }
+.gestion-mini-kpi--green { border-top-color: #16a34a; }
+.gestion-mini-kpi--teal { border-top-color: #0d9488; }
+.gestion-mini-kpi--orange { border-top-color: #ea580c; }
+.gestion-mini-kpi--purple { border-top-color: #7c3aed; }
+.gestion-mini-kpi--indigo { border-top-color: #4f46e5; }
+.gestion-mini-kpi--slate { border-top-color: #64748b; }
+
+.gestion-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.gestion-chart-card {
+    background: #fafbfc;
+    border: 1px solid #e8ecf1;
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+    min-width: 0;
+}
+
+.gestion-chart-card--wide {
+    grid-column: span 2;
+}
+
+.gestion-chart-titulo {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.gestion-chart-canvas-wrap {
+    position: relative;
+    height: 220px;
+}
+
+.gestion-chart-canvas-wrap--gauge {
+    height: 200px;
+}
+
+.gestion-chart-canvas-wrap--trend {
+    height: 260px;
+}
+
+.gestion-chart-canvas-wrap--bar {
+    height: 240px;
+}
+
 /* Panel indicadores (dashboard) */
 .dash-kpi-grid {
     display: grid;
@@ -2670,6 +2773,18 @@ button.reservas-chip-filtro:focus-visible {
         grid-template-columns: 1fr;
     }
 
+    .gestion-charts-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .gestion-chart-card--wide {
+        grid-column: span 2;
+    }
+
+    .gestion-charts-kpi-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .dash-bottom-row {
         grid-template-columns: 1fr;
     }
@@ -2805,6 +2920,19 @@ button.reservas-chip-filtro:focus-visible {
 
     .dash-kpi-grid {
         grid-template-columns: 1fr;
+    }
+
+    .gestion-charts-grid,
+    .gestion-charts-kpi-row {
+        grid-template-columns: 1fr;
+    }
+
+    .gestion-chart-card--wide {
+        grid-column: span 1;
+    }
+
+    .gestion-chart-canvas-wrap--trend {
+        height: 220px;
     }
 
     .dash-ingresos-grid {
