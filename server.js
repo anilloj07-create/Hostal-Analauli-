@@ -1899,9 +1899,9 @@ app.get('*', (req, res, next) => {
   return res.redirect('/login.html');
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+// Iniciar servidor (0.0.0.0 requerido en Render y otros PaaS)
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
   const dbInfo = db.getDatabaseInfo();
   console.log(`Base de datos: ${dbInfo.path}`);
   if (process.env.DATA_DIR) {
@@ -1911,4 +1911,9 @@ app.listen(PORT, () => {
   db.procesarEstadosCheckinReservas((err) => {
     if (err) console.error('Check-in / no show al iniciar:', err.message);
   });
+});
+
+server.on('error', (err) => {
+  console.error('Error al iniciar el servidor:', err.message);
+  process.exit(1);
 });

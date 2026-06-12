@@ -8,14 +8,15 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /api/status
     envVars:
       - key: NODE_ENV
         value: production
       - key: SESSION_SECRET
         generateValue: true
-      # Carga seed/hotel.db en el primer despliegue (quitar después si ya tiene datos en producción).
+      # Solo copia seed/hotel.db si aún no existe data/hotel.db (no borra datos en cada deploy).
       - key: APPLY_DB_SEED
-        value: "1"
+        value: "0"
       # Descomenta si añades disco persistente montado en /data:
       # - key: DATA_DIR
       #   value: /data
